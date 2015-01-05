@@ -448,11 +448,12 @@ class Looming_Phys(Phys_Flight):
         #get all traces ------------------------------------------------------------------
         all_fly_traces = self.get_traces_by_stim() 
         
+        #now plot one figure for each looming speed --------------------------------------
         for loom_speed in l_div_v_list: 
             fig = plt.figure(figsize=(16.5, 9))
             gs = gridspec.GridSpec(4,3,width_ratios=[1,1,1],height_ratios=[1,1,.2,.5])
         
-            #should I define these here? what's the best style?
+            #should I define these here? what's the best style?*******************************
             #what is the scope of python variables here? 
             vm_ax0 = np.nan
             wba_ax0 = np.nan
@@ -468,42 +469,46 @@ class Looming_Phys(Phys_Flight):
                 this_cnd_trs = np.where(self.stim_types == cnd)[0] 
                 n_cnd_trs = np.size(this_cnd_trs)
             
-                #get colormap info
+                #get colormap info -------------------
                 cmap = plt.cm.get_cmap('jet')     #('gist_ncar')
                 cNorm  = colors.Normalize(0,n_cnd_trs)
                 scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
             
-                #create subplots
-                #ideally also share the y for all vms, all wbas
-                #figure out how to get the tight ylim for the largest figure
-                #then connect all
+                #create subplots -------------------
+                #share all x for all plots, share y within a row
                 
                 if grid_col == 0:
                     vm_ax = plt.subplot(gs[0,grid_col])
                     wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax) 
-                    vm_ax0 = vm_ax      #is this a pointer or deep copy? 
+                    stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax)    
+                    corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax)
+                    
+                    #for the first column, get a pointer to the axis for sharing rows
+                    vm_ax0 = vm_ax      #is this a pointer or deep copy? *********
                     wba_ax0 = wba_ax
+                    stim_ax0 = stim_ax
+                    corr_ax0 = corr_ax
                 else:
-                    vm_ax = plt.subplot(gs[0,grid_col],sharey=vm_ax0)
-                    wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax,sharey=wba_ax0) 
+                    vm_ax = plt.subplot(gs[0,grid_col], sharex=vm_ax0,sharey=vm_ax0)
+                    wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax0,sharey=wba_ax0) 
+                    stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax0,sharey=stim_ax0)    
+                    corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax0,sharey=corr_ax0)
                 
                 
-                stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax)    
-                corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax)
-                
-                
-                
+                #create shaded regions of the baseline vm and saccade time ---------------
                 vm_ax.fill([0,.5,.5,0],[-40,-40,-90,-90],'black',alpha=.1)
+                
                 wba_min_t = l_div_v_turn_windows[loom_speed][0]/np.double(sampling_rate)
                 wba_max_t = l_div_v_turn_windows[loom_speed][-1]/np.double(sampling_rate)
-                
                 wba_ax.fill([wba_min_t,wba_max_t,wba_max_t,wba_min_t],[60,60,-60,-60],'black',alpha=.1)
                      
                 #.5, 1, 2s
                 x_lim = [0, 4+loom_speed]
                 
+                
+                #loop through each of the single trials and plot all signals -------------
                 for tr, i in zip(this_cnd_trs,range(n_cnd_trs)):
-                    this_start = self.tr_starts[tr] - s_iti
+                    this_start = self.tr_starts[tr] - s_iti  #change this to just use the pandas df******
                     this_stop =  self.tr_stops[tr] + s_iti
                     this_color = scalarMap.to_rgba(i)        
                     
