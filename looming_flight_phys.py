@@ -424,8 +424,8 @@ class Looming_Phys(Phys_Flight):
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings.png',dpi=100)
                 #plt.close('all')        
         
-    def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[1,2],
-        vm_lim=[-90,-40],wba_lim=[-60,60],if_save=False): 
+    def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[0,1,2],
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=True): 
         #add correlation here 
         #for each l/v stim parameter, 
         #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
@@ -441,7 +441,7 @@ class Looming_Phys(Phys_Flight):
         l_div_v_turn_windows = []
         l_div_v_turn_windows.append(range(int(2.45*sampling_rate),int(2.8*sampling_rate)))
         l_div_v_turn_windows.append(range(int(2.95*sampling_rate),int(3.3*sampling_rate)))
-        l_div_v_turn_windows.append(range(int(3.45*sampling_rate),int(3.8*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(3.85*sampling_rate),int(4.20*sampling_rate)))
         
         s_iti = 20000   #add iti periods
         baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
@@ -477,7 +477,10 @@ class Looming_Phys(Phys_Flight):
                 corr_ax = plt.subplot(gs[3,grid_col])
                 
                 vm_ax.fill([0,.5,.5,0],[-40,-40,-90,-90],'black',alpha=.1)
-                wba_ax.fill([2.45,2.8,2.8,2.45],[60,60,-60,-60],'black',alpha=.1)
+                wba_min_t = l_div_v_turn_windows[loom_speed][0]/np.double(sampling_rate)
+                wba_max_t = l_div_v_turn_windows[loom_speed][-1]/np.double(sampling_rate)
+                
+                wba_ax.fill([wba_min_t,wba_max_t,wba_max_t,wba_min_t],[60,60,-60,-60],'black',alpha=.1)
                      
                 #.5, 1, 2s
                 x_lim = [0, 4+loom_speed]
