@@ -425,8 +425,7 @@ class Looming_Phys(Phys_Flight):
                 #plt.close('all')        
         
     def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[0,1,2],
-        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=True): 
-        #add correlation here 
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False): 
         #for each l/v stim parameter, 
         #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
         #three columns of looming direction
@@ -446,23 +445,27 @@ class Looming_Phys(Phys_Flight):
         s_iti = 20000   #add iti periods
         baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
         
-        #get all traces -------
-        #this is redundant
+        #get all traces ------------------------------------------------------------------
         all_fly_traces = self.get_traces_by_stim() 
         
         for loom_speed in l_div_v_list: 
-            print loom_speed         
             fig = plt.figure(figsize=(16.5, 9))
             gs = gridspec.GridSpec(4,3,width_ratios=[1,1,1],height_ratios=[1,1,.2,.5])
+        
+            #should I define these here? what's the best style?
+            #what is the scope of python variables here? 
+            vm_ax0 = np.nan
+            wba_ax0 = np.nan
         
             #0 1 2 ; 3 4 5 ; 6 7 8
             cnds_to_plot = np.arange(0,7,3) + loom_speed 
     
             for cnd, grid_col in zip(cnds_to_plot,range(3)):
-                #here row is manually set -- corresponds to the signal
+                #here row is manually set, encoded the signal type (vm, wba, stim, corr)
                 #column is in the loop
                 
-                this_cnd_trs = np.where(self.stim_types == cnd)[0]
+                #rewrite this so I just use all_fly_traces *******************************
+                this_cnd_trs = np.where(self.stim_types == cnd)[0] 
                 n_cnd_trs = np.size(this_cnd_trs)
             
                 #get colormap info
@@ -471,10 +474,24 @@ class Looming_Phys(Phys_Flight):
                 scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
             
                 #create subplots
-                vm_ax = plt.subplot(gs[0,grid_col])
-                wba_ax = plt.subplot(gs[1,grid_col])   
-                stim_ax = plt.subplot(gs[2,grid_col])    
-                corr_ax = plt.subplot(gs[3,grid_col])
+                #ideally also share the y for all vms, all wbas
+                #figure out how to get the tight ylim for the largest figure
+                #then connect all
+                
+                if grid_col == 0:
+                    vm_ax = plt.subplot(gs[0,grid_col])
+                    wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax) 
+                    vm_ax0 = vm_ax      #is this a pointer or deep copy? 
+                    wba_ax0 = wba_ax
+                else:
+                    vm_ax = plt.subplot(gs[0,grid_col],sharey=vm_ax0)
+                    wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax,sharey=wba_ax0) 
+                
+                
+                stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax)    
+                corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax)
+                
+                
                 
                 vm_ax.fill([0,.5,.5,0],[-40,-40,-90,-90],'black',alpha=.1)
                 wba_min_t = l_div_v_turn_windows[loom_speed][0]/np.double(sampling_rate)
@@ -500,20 +517,20 @@ class Looming_Phys(Phys_Flight):
                     
                     vm_ax.plot(self.t[this_start:this_stop]-self.t[this_start],vm_trace,color=this_color)
                 
-                    #set x and y lim
-                    vm_ax.set_ylim(vm_lim) 
-                    vm_ax.set_xlim(x_lim) 
+                    ##set x and y lim
+                    ##vm_ax.set_ylim(vm_lim) 
+                    ##vm_ax.set_xlim(x_lim) 
                 
                     #remove extra grid labels
                     if grid_col == 0:
-                        vm_ax.yaxis.set_ticks(vm_lim)
+                        #vm_ax.yaxis.set_ticks(vm_lim)
                         if vm_base_subtract:
                             vm_ax.set_ylabel('Baseline subtracted Vm (mV)')
                         else:
                             vm_ax.set_ylabel('Vm (mV)')
-                    else:
-                        vm_ax.yaxis.set_ticks([])
-                    vm_ax.xaxis.set_ticks([])
+                    #else:
+                        #vm_ax.yaxis.set_ticks([])
+                    #vm_ax.xaxis.set_ticks([])
                     
                     #plot WBA signal _____________________________________________________           
                     wba_trace = self.lmr[this_start:this_stop]
@@ -525,17 +542,17 @@ class Looming_Phys(Phys_Flight):
                     #plot black line for 0 
                     #wba_ax.axhline(color=black)
                 
-                    #set x and y lim
-                    wba_ax.set_ylim(wba_lim) 
-                    wba_ax.set_xlim(x_lim) 
+                    ##set x and y lim
+                    #wba_ax.set_ylim(wba_lim) 
+                    #wba_ax.set_xlim(x_lim) 
                 
                     #remove extra grid labels
                     if grid_col == 0:
-                        wba_ax.yaxis.set_ticks(wba_lim)
+                        #wba_ax.yaxis.set_ticks(wba_lim)
                         wba_ax.set_ylabel('L-R WBA (Degrees)')
-                    else:
-                        wba_ax.yaxis.set_ticks([])
-                    wba_ax.xaxis.set_ticks([])
+                    #else:
+                        #wba_ax.yaxis.set_ticks([])
+                    #wba_ax.xaxis.set_ticks([])
                  
                     #now plot stimulus traces ____________________________________________
                     stim_ax.plot(self.t[this_start:this_stop]-self.t[this_start],self.ystim[this_start:this_stop],color=this_color)
@@ -550,9 +567,9 @@ class Looming_Phys(Phys_Flight):
                         stim_ax.set_ylabel('stim')
                     else:
                         stim_ax.yaxis.set_ticks([])
-                    stim_ax.xaxis.set_ticks(x_lim)
+                    #stim_ax.xaxis.set_ticks(x_lim)
 
-                    stim_ax.set_xlim(x_lim)
+                    #stim_ax.set_xlim(x_lim)
                     
                 #now calculate and plot correlations _________________________________             
                 this_turn_win = l_div_v_turn_windows[loom_speed]
@@ -581,7 +598,7 @@ class Looming_Phys(Phys_Flight):
                     corr_ax.set_xlabel('Time (s)') 
                 else:
                     corr_ax.yaxis.set_ticks([])
-                corr_ax.xaxis.set_ticks(x_lim)
+                #corr_ax.xaxis.set_ticks(x_lim)
         
         
         
@@ -592,6 +609,15 @@ class Looming_Phys(Phys_Flight):
         
             figure_txt = title_txt + ' '+l_div_v_txt[loom_speed]
             fig.text(.425,.95,figure_txt,fontsize=18)        
+            
+            
+            #how do I get the tight y limit here?  
+            # recompute the ax.dataLim
+            vm_ax.relim()
+            wba_ax.relim()
+            # update ax.viewLim using the new dataLim
+            vm_ax.autoscale_view()           
+            wba_ax.autoscale_view()           
             plt.draw()
             
             if if_save:
@@ -638,11 +664,7 @@ class Looming_Phys(Phys_Flight):
          
         return fly_df  
         
-    def plot_vm_wba(self,fly_name):
-        a = 5
     
-        
-        
 
 #---------------------------------------------------------------------------#
 def moving_average(values, window):
