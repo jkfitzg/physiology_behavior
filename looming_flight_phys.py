@@ -424,19 +424,20 @@ class Looming_Phys(Phys_Flight):
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings.png',dpi=100)
                 #plt.close('all')        
         
-    def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[0,1,2],
+    def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[1],
         vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False): 
         #for each l/v stim parameter, 
         #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
         #three columns of looming direction
-         
-        sampling_rate = 10000
-         
+        
+        #labels for looming conditions 
         l_div_v_txt = [];
         l_div_v_txt.append('22 l div v')
         l_div_v_txt.append('44 l div v')
         l_div_v_txt.append('88 l div v')
         
+        #time windows in which to examine turning behaviors. these are by eye
+        sampling_rate = 10000
         l_div_v_turn_windows = []
         l_div_v_turn_windows.append(range(int(2.45*sampling_rate),int(2.8*sampling_rate)))
         l_div_v_turn_windows.append(range(int(2.95*sampling_rate),int(3.3*sampling_rate)))
@@ -445,190 +446,155 @@ class Looming_Phys(Phys_Flight):
         s_iti = 20000   #add iti periods
         baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
         
-        #get all traces ------------------------------------------------------------------
+        #get all traces __________________________________________________________________
         all_fly_traces = self.get_traces_by_stim() 
         
-        #now plot one figure for each looming speed --------------------------------------
+        #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
             fig = plt.figure(figsize=(16.5, 9))
             gs = gridspec.GridSpec(4,3,width_ratios=[1,1,1],height_ratios=[1,1,.2,.5])
         
-            #should I define these here? what's the best style?*******************************
-            #what is the scope of python variables here? 
-            vm_ax0 = np.nan
-            wba_ax0 = np.nan
+            #store all subplots for formatting later           
+            all_vm_ax = []
+            all_wba_ax = []
+            all_stim_ax = []
+            all_corr_ax = []
         
-            #0 1 2 ; 3 4 5 ; 6 7 8
-            cnds_to_plot = np.arange(0,7,3) + loom_speed 
-    
+            cnds_to_plot = np.arange(0,7,3) + loom_speed
+            #0 1 2 ; 3 4 5 ; 6 7 8 
+            this_turn_win = l_div_v_turn_windows[loom_speed]
+            
+            #now loop through the conditions/columns. ____________________________________
+            #the signal types are encoded in separate rows(vm, wba, stim, corr)
             for cnd, grid_col in zip(cnds_to_plot,range(3)):
-                #here row is manually set, encoded the signal type (vm, wba, stim, corr)
-                #column is in the loop
-                
-                #rewrite this so I just use all_fly_traces *******************************
-                this_cnd_trs = np.where(self.stim_types == cnd)[0] 
+            
+                this_cnd_trs = np.where(self.stim_types == cnd)[0] #rewrite this so I just use all_fly_traces *******************************
                 n_cnd_trs = np.size(this_cnd_trs)
             
-                #get colormap info -------------------
+                #get colormap info _______________________________________________________
                 cmap = plt.cm.get_cmap('jet')     #('gist_ncar')
                 cNorm  = colors.Normalize(0,n_cnd_trs)
                 scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
             
-                #create subplots -------------------
-                #share all x for all plots, share y within a row
-                
+                #create subplots _________________________________________________________              
                 if grid_col == 0:
                     vm_ax = plt.subplot(gs[0,grid_col])
                     wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax) 
                     stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax)    
-                    corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax)
-                    
-                    #for the first column, get a pointer to the axis for sharing rows
-                    vm_ax0 = vm_ax      #is this a pointer or deep copy? *********
-                    wba_ax0 = wba_ax
-                    stim_ax0 = stim_ax
-                    corr_ax0 = corr_ax
+                    corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax)        
                 else:
-                    vm_ax = plt.subplot(gs[0,grid_col], sharex=vm_ax0,sharey=vm_ax0)
-                    wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax0,sharey=wba_ax0) 
-                    stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax0,sharey=stim_ax0)    
-                    corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax0,sharey=corr_ax0)
-                
-                
-                #create shaded regions of the baseline vm and saccade time ---------------
-                vm_ax.fill([0,.5,.5,0],[-40,-40,-90,-90],'black',alpha=.1)
-                
-                wba_min_t = l_div_v_turn_windows[loom_speed][0]/np.double(sampling_rate)
-                wba_max_t = l_div_v_turn_windows[loom_speed][-1]/np.double(sampling_rate)
-                wba_ax.fill([wba_min_t,wba_max_t,wba_max_t,wba_min_t],[60,60,-60,-60],'black',alpha=.1)
-                     
-                #.5, 1, 2s
-                x_lim = [0, 4+loom_speed]
-                
-                
-                #loop through each of the single trials and plot all signals -------------
+                    vm_ax = plt.subplot(gs[0,grid_col],sharey=all_vm_ax[0])
+                    wba_ax = plt.subplot(gs[1,grid_col], sharex=vm_ax,sharey=all_wba_ax[0]) 
+                    stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax,sharey=all_stim_ax[0])    
+                    corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax,sharey=all_corr_ax[0])
+                all_vm_ax.append(vm_ax)
+                all_wba_ax.append(wba_ax) 
+                all_stim_ax.append(stim_ax)
+                all_corr_ax.append(corr_ax)
+            
+                #loop single trials and plot all signals _________________________________
                 for tr, i in zip(this_cnd_trs,range(n_cnd_trs)):
                     this_start = self.tr_starts[tr] - s_iti  #change this to just use the pandas df******
-                    this_stop =  self.tr_stops[tr] + s_iti
+                    this_stop  = self.tr_stops[tr] + s_iti
+                    trace_t = self.t[this_start:this_stop]-self.t[this_start]
                     this_color = scalarMap.to_rgba(i)        
                     
                     #plot Vm signal ______________________________________________________      
-                    vm_trace = self.vm[this_start:this_stop]
+                    vm_trace = self.vm[this_start:this_stop]  #change *********
                     vm_base = np.nanmean(vm_trace[baseline_win])
-                    
                     if vm_base_subtract:
                         vm_trace = vm_trace - vm_base
-                        vm_lim = [-15, 15]
-                    
-                    vm_ax.plot(self.t[this_start:this_stop]-self.t[this_start],vm_trace,color=this_color)
-                
-                    ##set x and y lim
-                    ##vm_ax.set_ylim(vm_lim) 
-                    ##vm_ax.set_xlim(x_lim) 
-                
-                    #remove extra grid labels
-                    if grid_col == 0:
-                        #vm_ax.yaxis.set_ticks(vm_lim)
-                        if vm_base_subtract:
-                            vm_ax.set_ylabel('Baseline subtracted Vm (mV)')
-                        else:
-                            vm_ax.set_ylabel('Vm (mV)')
-                    #else:
-                        #vm_ax.yaxis.set_ticks([])
-                    #vm_ax.xaxis.set_ticks([])
-                    
+                 
+                    vm_ax.plot(trace_t,vm_trace,color=this_color)
+                   
                     #plot WBA signal _____________________________________________________           
                     wba_trace = self.lmr[this_start:this_stop]
                     baseline = np.nanmean(wba_trace[baseline_win])
-                    wba_trace = wba_trace - baseline
-                
-                    wba_ax.plot(self.t[this_start:this_stop]-self.t[this_start],moving_average(wba_trace,200),color=this_color)
-                
-                    #plot black line for 0 
-                    #wba_ax.axhline(color=black)
-                
-                    ##set x and y lim
-                    #wba_ax.set_ylim(wba_lim) 
-                    #wba_ax.set_xlim(x_lim) 
-                
-                    #remove extra grid labels
-                    if grid_col == 0:
-                        #wba_ax.yaxis.set_ticks(wba_lim)
-                        wba_ax.set_ylabel('L-R WBA (Degrees)')
-                    #else:
-                        #wba_ax.yaxis.set_ticks([])
-                    #wba_ax.xaxis.set_ticks([])
-                 
-                    #now plot stimulus traces ____________________________________________
-                    stim_ax.plot(self.t[this_start:this_stop]-self.t[this_start],self.ystim[this_start:this_stop],color=this_color)
-                
-                    #set x and y lim
-                    stim_ax.set_xlim(x_lim)
-                    stim_ax.set_ylim([0, 10]) 
-                
-                    #remove extra grid labels
-                    if grid_col == 0:   
-                        stim_ax.yaxis.set_ticks([0,10])
-                        stim_ax.set_ylabel('stim')
-                    else:
-                        stim_ax.yaxis.set_ticks([])
-                    #stim_ax.xaxis.set_ticks(x_lim)
-
-                    #stim_ax.set_xlim(x_lim)
+                    wba_trace = wba_trace - baseline  #always subtract the baseline here
                     
-                #now calculate and plot correlations _________________________________             
-                this_turn_win = l_div_v_turn_windows[loom_speed]
+                    wba_ax.plot(trace_t,moving_average(wba_trace,200),color=this_color)
                 
+                    #now plot stimulus traces ____________________________________________
+                    stim_ax.plot(trace_t,self.ystim[this_start:this_stop],color=this_color)
+                 
+                #calculate, plot correlations for all traces/cnd _________________________             
                 vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
                 lmr_turn    = abs(np.nanmean(all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')],0))
                  
-                t_steps = range(0,39000,1000)
+                t_steps = range(0,39000,1000)  #update this for all conditions *********
                 step_size = 10000
+                
                 for t_start in t_steps:
                     t_stop = t_start+step_size
                     this_vm = np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')][t_start:t_stop],0)
-                    non_nan = np.where(~np.isnan(lmr_turn))[0]
+                    non_nan = np.where(~np.isnan(lmr_turn))[0]  #is there a more elegant way to do this? 
                     delta_vm = this_vm-vm_base
                     
                     r,p = sp.stats.pearsonr(delta_vm[non_nan],lmr_turn[non_nan])
                     t_plot = (t_start+(step_size/2.0))/sampling_rate
                     corr_ax.plot(t_plot,r,'.b')
-                    if p < 0.05:
-                        l = corr_ax.plot(t_plot,r,'or',)
-                corr_ax.set_ylim([-1,1])
-                corr_ax.set_xlim(x_lim)
-                if grid_col == 0:   
-                    corr_ax.set_ylabel('Corr(Vm, WBA)')
-                    corr_ax.yaxis.set_ticks([-1,1])
-                    corr_ax.set_xlabel('Time (s)') 
-                else:
-                    corr_ax.yaxis.set_ticks([])
-                #corr_ax.xaxis.set_ticks(x_lim)
-        
-        
-        
-            #now annotate -- signals x positions     
+                    if p < 0.05: #if significant without correcting for many comparisons
+                        l = corr_ax.plot(t_plot,r,'or',) #plot in red
+                
+                        
+            #now format all subplots _____________________________________________________  
+            
+            vm_lim = vm_ax.get_ylim()
+            wba_lim = wba_ax.get_ylim()
+            
+            #loop though all columns again, format each row ______________________________
+            for col in range(3):    
+            
+                #create shaded regions of baseline vm and saccade time ___________________
+                all_vm_ax[col].fill([0,.5,.5,0],[vm_lim[1],vm_lim[1],vm_lim[0],vm_lim[0]],'black',alpha=.1)
+                
+                wba_min_t = l_div_v_turn_windows[loom_speed][0]/np.double(sampling_rate)
+                wba_max_t = l_div_v_turn_windows[loom_speed][-1]/np.double(sampling_rate)
+                all_wba_ax[col].fill([wba_min_t,wba_max_t,wba_max_t,wba_min_t],
+                        [wba_lim[1],wba_lim[1],wba_lim[0],wba_lim[0]],'black',alpha=.1)
+                        
+                #set the ylim for the stimulus and correlation rows ______________________
+                all_stim_ax[col].set_ylim([0,10])
+                all_corr_ax[col].set_ylim([-1,1])
+                 
+                #label axes, show xlim and ylim __________________________________________
+                
+                #remove all time xticklabels
+                all_vm_ax[col].tick_params(labelbottom='off')
+                all_wba_ax[col].tick_params(labelbottom='off')
+                all_stim_ax[col].tick_params(labelbottom='off')
+                all_corr_ax[col].tick_params(labelbottom='off')
+                
+                
+                if col == 0: #label yaxes
+                    all_vm_ax[col].set_ylabel('Vm (mV)')
+                    all_wba_ax[col].set_ylabel('WBA (V)')
+                    all_stim_ax[col].set_ylabel('Stim (frame)')
+                    all_corr_ax[col].set_ylabel('Corr(Vm, WBA)')
+                    
+                    #label time x axis for just col 0
+                    all_corr_ax[col].tick_params(labelbottom='on')
+                    all_corr_ax[col].set_xlabel('Time (s)') 
+
+                else: #remove all ylabels 
+                    all_vm_ax[col].tick_params(labelleft='off')
+                    all_wba_ax[col].tick_params(labelleft='off')
+                    all_stim_ax[col].tick_params(labelleft='off')
+                    all_corr_ax[col].tick_params(labelleft='off')
+                 
+            #now annotate stimulus positions, title ______________________________________      
             fig.text(.22,.905,'Left',fontsize=14)
             fig.text(.495,.905,'Center',fontsize=14)
             fig.text(.775,.905,'Right',fontsize=14)
-        
+            
             figure_txt = title_txt + ' '+l_div_v_txt[loom_speed]
             fig.text(.425,.95,figure_txt,fontsize=18)        
-            
-            
-            #how do I get the tight y limit here?  
-            # recompute the ax.dataLim
-            vm_ax.relim()
-            wba_ax.relim()
-            # update ax.viewLim using the new dataLim
-            vm_ax.autoscale_view()           
-            wba_ax.autoscale_view()           
+                   
             plt.draw()
             
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
-                plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)
-                #plt.close('all')        
+                plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
    
    
    
