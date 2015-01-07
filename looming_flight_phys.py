@@ -150,14 +150,16 @@ class Looming_Phys(Phys_Flight):
         #should check for same # of starts and stops
         n_trs = len(clean_tr_starts)
         
-        ##for debugging
-        #figd = plt.figure()
-        #plt.plot(self.ao)
-        #plt.plot(ao_diff,color=magenta)
-        #y_start = np.ones(len(clean_tr_starts))
-        #y_stop = np.ones(len(clean_tr_stops))
-        #plt.plot(clean_tr_starts,y_start*7,'go')
-        #plt.plot(clean_tr_stops,y_stop*7,'ro')
+        #for debugging
+        debugging_plot = False
+        if debugging_plot:
+            figd = plt.figure()
+            plt.plot(self.ao)
+            plt.plot(ao_diff,color=magenta)
+            y_start = np.ones(len(clean_tr_starts))
+            y_stop = np.ones(len(clean_tr_stops))
+            plt.plot(clean_tr_starts,y_start*7,'go')
+            plt.plot(clean_tr_stops,y_stop*7,'ro')
         
         #detect when the y stim stepped
         ystim_diff = np.diff(self.ystim)
@@ -186,16 +188,10 @@ class Looming_Phys(Phys_Flight):
     def parse_stim_type(self):
         #calculate the stimulus type
         
-        #self.n_trs = 70 #hack to deal with the crash ------ remove this *******************
-       
         stim_types_labels = []
-        stim_types_labels.append('left, 22 l/v')
+        stim_types_labels.append('left, 22 l/v')  #check this sequence -------------------
         stim_types_labels.append('left, 44 l/v') 
         stim_types_labels.append('left, 88 l/v')
-        
-        stim_types_labels.append('center, 22 l/v')
-        stim_types_labels.append('center, 44 l/v')
-        stim_types_labels.append('center, 88 l/v')
         
         stim_types_labels.append('right, 22 l/v')
         stim_types_labels.append('right, 44 l/v')
@@ -221,7 +217,7 @@ class Looming_Phys(Phys_Flight):
         self.stim_types = stim_types  #change to integer, although nans are also useful
         self.stim_types_labels = stim_types_labels
            
-    def plot_wba_stim(self,title_txt=[],wba_lim=[-60,60],if_save=True):
+    def plot_wba_stim(self,title_txt=[],wba_lim=[-60,60],if_save=True,cnds_to_plot=range(9)):
         #plot the stimuli and wba traces for each of the nine conditions
         #add text to annotate the filename, genotype
         #ideally there would be less whitespace between the wba and stim figures and more 
@@ -231,8 +227,6 @@ class Looming_Phys(Phys_Flight):
         fig = plt.figure(figsize=(16.5, 9))
         gs = gridspec.GridSpec(6,3,width_ratios=[1,1,1],height_ratios=[4,1,4,1,4,1])
         
-        cnds_to_plot=range(9)
-    
         for cnd in cnds_to_plot:
             grid_row = int(2*math.floor(cnd/3))
             grid_col = int(cnd%3)
@@ -455,9 +449,9 @@ class Looming_Phys(Phys_Flight):
         #time windows in which to examine turning behaviors. these are by eye
         sampling_rate = 10000
         l_div_v_turn_windows = []
-        l_div_v_turn_windows.append(range(int(2.45*sampling_rate),int(2.8*sampling_rate)))
-        l_div_v_turn_windows.append(range(int(2.95*sampling_rate),int(3.3*sampling_rate)))
-        l_div_v_turn_windows.append(range(int(3.85*sampling_rate),int(4.20*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(2.3*sampling_rate),int(2.6*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(2.6*sampling_rate),int(2.9*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(3.3*sampling_rate),int(3.7*sampling_rate)))
         
         s_iti = 20000   #add iti periods
         baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
@@ -465,10 +459,11 @@ class Looming_Phys(Phys_Flight):
         #get all traces __________________________________________________________________
         all_fly_traces = self.get_traces_by_stim('this_fly',s_iti) 
         
+        n_x = 2
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
             fig = plt.figure(figsize=(16.5, 9))
-            gs = gridspec.GridSpec(4,3,width_ratios=[1,1,1],height_ratios=[1,1,.2,.5])
+            gs = gridspec.GridSpec(4,n_x,width_ratios=[1,1],height_ratios=[1,1,.2,.5])
         
             #store all subplots for formatting later           
             all_vm_ax = []
@@ -476,13 +471,16 @@ class Looming_Phys(Phys_Flight):
             all_stim_ax = []
             all_corr_ax = []
         
-            cnds_to_plot = np.arange(0,7,3) + loom_speed
-            #0 1 2 ; 3 4 5 ; 6 7 8 
+            cnds_to_plot = np.asarray([0,3]) + loom_speed
+            #0 3 
+            #1 4
+            #2 5
+            
             this_turn_win = l_div_v_turn_windows[loom_speed]
             
             #now loop through the conditions/columns. ____________________________________
             #the signal types are encoded in separate rows(vm, wba, stim, corr)
-            for cnd, grid_col in zip(cnds_to_plot,range(3)):
+            for cnd, grid_col in zip(cnds_to_plot,range(n_x)):
             
                 this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
                 n_cnd_trs = np.size(this_cnd_trs)
@@ -541,7 +539,7 @@ class Looming_Phys(Phys_Flight):
                 lmr_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
                 lmr_turn_win  = np.nanmean(all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')],0)
                 
-                lmr_turn = lmr_turn_win - lmr_baseline
+                lmr_turn = np.abs(lmr_turn_win - lmr_baseline)
                 #subtract baseline here
                 
                 max_time = np.shape(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])[0]
@@ -567,7 +565,7 @@ class Looming_Phys(Phys_Flight):
             wba_lim = wba_ax.get_ylim()
             
             #loop though all columns again, format each row ______________________________
-            for col in range(3):      
+            for col in range(n_x):      
                 #create shaded regions of baseline vm and saccade time ___________________
                 vm_min_t = baseline_win[0]
                 vm_max_t = baseline_win[-1]
@@ -601,7 +599,7 @@ class Looming_Phys(Phys_Flight):
                     #divide by sampling rate _______________________________
                     def div_sample_rate(x, pos): 
                         #The two args are the value and tick position' 
-                        return int(x/sampling_rate)
+                        return (x/sampling_rate)
                         
                     formatter = FuncFormatter(div_sample_rate) 
                     all_corr_ax[col].xaxis.set_major_formatter(formatter)
@@ -628,7 +626,7 @@ class Looming_Phys(Phys_Flight):
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
-  
+                  
     def get_traces_by_stim(self,fly_name='this_fly',iti=25000):
     #here extract the traces for each of the stimulus times. 
     #align to looming start, and add the first pre stim and post stim intervals
