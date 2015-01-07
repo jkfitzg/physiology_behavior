@@ -440,7 +440,7 @@ class Looming_Phys(Phys_Flight):
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings.png',dpi=100)
                 #plt.close('all')        
         
-    def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[1],
+    def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[0,1,2],
         vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False): 
         #for each l/v stim parameter, 
         #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
@@ -463,7 +463,7 @@ class Looming_Phys(Phys_Flight):
         baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
         
         #get all traces __________________________________________________________________
-        all_fly_traces = self.get_traces_by_stim() 
+        all_fly_traces = self.get_traces_by_stim('this_fly',s_iti) 
         
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
@@ -538,7 +538,11 @@ class Looming_Phys(Phys_Flight):
                  
                 #calculate, plot correlations for all traces/cnd _________________________             
                 vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
-                lmr_turn    = abs(np.nanmean(all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')],0))
+                lmr_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
+                lmr_turn_win  = np.nanmean(all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')],0)
+                
+                lmr_turn = lmr_turn_win - lmr_baseline
+                #subtract baseline here
                 
                 max_time = np.shape(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])[0]
                 t_steps = range(0,max_time,1000)  #update this for all conditions *********
@@ -563,13 +567,14 @@ class Looming_Phys(Phys_Flight):
             wba_lim = wba_ax.get_ylim()
             
             #loop though all columns again, format each row ______________________________
-            for col in range(3):    
-            
+            for col in range(3):      
                 #create shaded regions of baseline vm and saccade time ___________________
-                all_vm_ax[col].fill([0,.5,.5,0],[vm_lim[1],vm_lim[1],vm_lim[0],vm_lim[0]],'black',alpha=.1)
+                vm_min_t = baseline_win[0]
+                vm_max_t = baseline_win[-1]
+                all_vm_ax[col].fill([vm_min_t,vm_max_t,vm_max_t,vm_min_t],[vm_lim[1],vm_lim[1],vm_lim[0],vm_lim[0]],'black',alpha=.1)
                 
-                wba_min_t = l_div_v_turn_windows[loom_speed][0]/np.double(sampling_rate)
-                wba_max_t = l_div_v_turn_windows[loom_speed][-1]/np.double(sampling_rate)
+                wba_min_t = l_div_v_turn_windows[loom_speed][0]
+                wba_max_t = l_div_v_turn_windows[loom_speed][-1]
                 all_wba_ax[col].fill([wba_min_t,wba_max_t,wba_max_t,wba_min_t],
                         [wba_lim[1],wba_lim[1],wba_lim[0],wba_lim[0]],'black',alpha=.1)
                         
@@ -624,7 +629,7 @@ class Looming_Phys(Phys_Flight):
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
   
-    def get_traces_by_stim(self,fly_name='this_fly'):
+    def get_traces_by_stim(self,fly_name='this_fly',iti=25000):
     #here extract the traces for each of the stimulus times. 
     #align to looming start, and add the first pre stim and post stim intervals
     #here return a data frame of lwa and rwa wing traces
@@ -638,7 +643,7 @@ class Looming_Phys(Phys_Flight):
         
         for tr in range(self.n_trs):
             this_loom_start = self.tr_starts[tr]
-            this_start = this_loom_start - 25000
+            this_start = this_loom_start - iti
             this_stop = self.tr_stops[tr] + pre_loom_stim_dur
             
             this_stim_type = self.stim_types[tr]
