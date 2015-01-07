@@ -5,6 +5,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter 
 from scipy import signal
 from scipy.stats import circmean, circstd
 from plotting_help import *
@@ -57,18 +58,33 @@ class Phys_Flight():
         self.vm = np.array(abf['vm'])[inc_indicies] - 13 #offset for bridge potential
         self.tach = np.array(abf['tach'])[inc_indicies]
             
-    def _is_flying(self, start_i, stop_i,flying_time_thresh=0.95):  #fix this critera
+    def _is_flying(self, start_i, stop_i):  #fix this critera
         #check that animal is flying using the tachometer signal
+     
+        #iterate through the trace in steps of 25 ms (250 with typical 10,000 sampling rate)
+        #min flight rate of interest = 100 wing beats/s
+        tach_range_thres = 2
+        stroke_range_thres = 1
+        percent_thres = .95
+        step_size = 250
+        i_steps = range(start_i,stop_i,step_size)
+        n_tests = np.size(i_steps)
+        flight_tests = np.ones(n_tests, dtype=bool)    
         
-        #nonflight is ~ -.5 V, with an envelope <1, while flight has ~4 V envelope
-        #this works but isn't ideal. 
-        wba_thres = .4 
-        processed_tach_signal = moving_average(abs(self.tach[start_i:stop_i]),1000)
+        #check tachometer, but also make sure flight track is on. 
+        for interval_start,test_i in zip(i_steps,range(n_tests)):
+            interval = np.arange(interval_start,(interval_start+step_size))
+            interval_min = np.min(self.tach[interval])
+            interval_max = np.max(self.tach[interval])
+            stroke_min = np.min(self.lmr[interval])
+            stroke_max = np.max(self.lmr[interval])
+            
+            tach_flight = (interval_max - interval_min) > tach_range_thres
+            stroke_flight = (stroke_max - stroke_min) > stroke_range_thres
+            
+            flight_tests[test_i] = tach_flight and stroke_flight
         
-        n_flying_samples = np.size(np.where(processed_tach_signal > wba_thres))
-        total_samples = stop_i-start_i
-        
-        is_flying = (float(n_flying_samples)/total_samples) > flying_time_thresh   
+        is_flying = np.nanmean(flight_tests) > percent_thres 
         return is_flying
         
            
@@ -468,7 +484,7 @@ class Looming_Phys(Phys_Flight):
             #the signal types are encoded in separate rows(vm, wba, stim, corr)
             for cnd, grid_col in zip(cnds_to_plot,range(3)):
             
-                this_cnd_trs = np.where(self.stim_types == cnd)[0] #rewrite this so I just use all_fly_traces *******************************
+                this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
                 n_cnd_trs = np.size(this_cnd_trs)
             
                 #get colormap info _______________________________________________________
@@ -494,35 +510,39 @@ class Looming_Phys(Phys_Flight):
             
                 #loop single trials and plot all signals _________________________________
                 for tr, i in zip(this_cnd_trs,range(n_cnd_trs)):
-                    this_start = self.tr_starts[tr] - s_iti  #change this to just use the pandas df******
-                    this_stop  = self.tr_stops[tr] + s_iti
-                    trace_t = self.t[this_start:this_stop]-self.t[this_start]
+                    #trace_t = self.t[this_start:this_stop]-self.t[this_start]
+                    
                     this_color = scalarMap.to_rgba(i)        
                     
                     #plot Vm signal ______________________________________________________      
-                    vm_trace = self.vm[this_start:this_stop]  #change *********
+                    vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'vm')]
                     vm_base = np.nanmean(vm_trace[baseline_win])
                     if vm_base_subtract:
                         vm_trace = vm_trace - vm_base
                  
-                    vm_ax.plot(trace_t,vm_trace,color=this_color)
+                    vm_ax.plot(vm_trace,color=this_color)
+                    #vm_ax.plot(trace_t,vm_trace,color=this_color)
                    
                     #plot WBA signal _____________________________________________________           
-                    wba_trace = self.lmr[this_start:this_stop]
+                    wba_trace = vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
                     baseline = np.nanmean(wba_trace[baseline_win])
                     wba_trace = wba_trace - baseline  #always subtract the baseline here
                     
-                    wba_ax.plot(trace_t,moving_average(wba_trace,200),color=this_color)
+                    wba_ax.plot(moving_average(wba_trace,200),color=this_color)
+                    #wba_ax.plot(trace_t,moving_average(wba_trace,200),color=this_color)
                 
                     #now plot stimulus traces ____________________________________________
-                    stim_ax.plot(trace_t,self.ystim[this_start:this_stop],color=this_color)
+                    #stim_ax.plot(trace_t,self.ystim[this_start:this_stop],color=this_color)
+                    stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')],color=this_color)
+                 
                  
                 #calculate, plot correlations for all traces/cnd _________________________             
                 vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
                 lmr_turn    = abs(np.nanmean(all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')],0))
-                 
-                t_steps = range(0,39000,1000)  #update this for all conditions *********
-                step_size = 10000
+                
+                max_time = np.shape(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])[0]
+                t_steps = range(0,max_time,1000)  #update this for all conditions *********
+                step_size = 1000
                 
                 for t_start in t_steps:
                     t_stop = t_start+step_size
@@ -531,7 +551,7 @@ class Looming_Phys(Phys_Flight):
                     delta_vm = this_vm-vm_base
                     
                     r,p = sp.stats.pearsonr(delta_vm[non_nan],lmr_turn[non_nan])
-                    t_plot = (t_start+(step_size/2.0))/sampling_rate
+                    t_plot = (t_start+(step_size/2.0))
                     corr_ax.plot(t_plot,r,'.b')
                     if p < 0.05: #if significant without correcting for many comparisons
                         l = corr_ax.plot(t_plot,r,'or',) #plot in red
@@ -572,7 +592,15 @@ class Looming_Phys(Phys_Flight):
                     all_stim_ax[col].set_ylabel('Stim (frame)')
                     all_corr_ax[col].set_ylabel('Corr(Vm, WBA)')
                     
-                    #label time x axis for just col 0
+                    #label time x axis for just col 0 ______________________
+                    #divide by sampling rate _______________________________
+                    def div_sample_rate(x, pos): 
+                        #The two args are the value and tick position' 
+                        return int(x/sampling_rate)
+                        
+                    formatter = FuncFormatter(div_sample_rate) 
+                    all_corr_ax[col].xaxis.set_major_formatter(formatter)
+                                        
                     all_corr_ax[col].tick_params(labelbottom='on')
                     all_corr_ax[col].set_xlabel('Time (s)') 
 
@@ -595,9 +623,7 @@ class Looming_Phys(Phys_Flight):
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
-   
-   
-   
+  
     def get_traces_by_stim(self,fly_name='this_fly'):
     #here extract the traces for each of the stimulus times. 
     #align to looming start, and add the first pre stim and post stim intervals
@@ -657,6 +683,7 @@ def moving_average(values, window):
     weights = np.repeat(1.0, window)/window
     sma = np.convolve(padded_values, weights, 'valid')
     return sma[0:n_values]
+    
         
 def xcorr(a, v):
     a = (a - np.mean(a)) / (np.std(a) * (len(a)-1))
