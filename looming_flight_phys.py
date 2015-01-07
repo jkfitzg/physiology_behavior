@@ -435,7 +435,7 @@ class Looming_Phys(Phys_Flight):
                 #plt.close('all')        
         
     def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[0,1,2],
-        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False): 
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=True): 
         #for each l/v stim parameter, 
         #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
         #three columns of looming direction
@@ -614,9 +614,8 @@ class Looming_Phys(Phys_Flight):
                     all_corr_ax[col].tick_params(labelleft='off')
                  
             #now annotate stimulus positions, title ______________________________________      
-            fig.text(.22,.905,'Left',fontsize=14)
-            fig.text(.495,.905,'Center',fontsize=14)
-            fig.text(.775,.905,'Right',fontsize=14)
+            fig.text(.3,.905,'Left',fontsize=14)
+            fig.text(.7,.905,'Right',fontsize=14)
             
             figure_txt = title_txt + ' '+l_div_v_txt[loom_speed]
             fig.text(.425,.95,figure_txt,fontsize=18)        
