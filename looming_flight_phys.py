@@ -686,7 +686,6 @@ def moving_average(values, window):
     sma = np.convolve(padded_values, weights, 'valid')
     return sma[0:n_values]
     
-        
 def xcorr(a, v):
     a = (a - np.mean(a)) / (np.std(a) * (len(a)-1))
     v = (v - np.mean(v)) /  np.std(v)
@@ -767,6 +766,9 @@ def filter_wings(raw_trace):
     filtered_trace = y_shifted
     
     return filtered_trace
+    
+def analyze_turns(lmr_trace):
+    a = 5
     
 def butter_lowpass(cutoff, fs, order=5):
     nyq = 0.5 * fs
