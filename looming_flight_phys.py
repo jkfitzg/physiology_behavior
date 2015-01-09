@@ -770,8 +770,49 @@ def filter_wings(raw_trace):
     
     return filtered_trace
     
-def analyze_turns(lmr_trace):
-    a = 5
+def find_saccades(raw_lmr_trace,test_plot=True):
+    #first fill in nans with nearest signal
+    lmr_trace = raw_lmr_trace[~np.isnan(raw_lmr_trace)] 
+        #this may give different indexing than input
+        #ideally fill in nans in wing processing
+
+    # filter lmr signal
+    filtered_trace = butter_lowpass_filter(lmr_trace) #6 hertz
+    
+    # differentiate, take the absolute value
+    diff_trace = abs(np.diff(filtered_trace))
+     
+    # mark saccade start times -- this could be improved
+    diff_thres = .01
+    
+    # find time points where the first time point is below
+    # threshold, but the second is above. these are already shifted 
+    # 1 sample right by the diff function
+    saccade_start = diff_trace[1:-1] < diff_thres  
+    saccade_cont  = diff_trace[2:]   >= diff_thres
+    
+    stacked_start_cont = np.vstack([saccade_start,saccade_cont])
+    candidate_saccade_starts = np.where(np.all(stacked_start_cont,axis=0))[0]
+    
+    # impose a refractory period for saccades
+    d_candidate_saccade_starts = np.diff(candidate_saccade_starts)
+    
+    saccade_starts = \
+    candidate_saccade_starts[np.where(d_candidate_saccade_starts > 3000)[0]-1]
+    
+    # add last saccade start 
+    if not candidate_saccade_starts:
+        saccade_starts = np.append(saccade_starts,candidate_saccade_starts[-1])
+    
+    if test_plot:
+        fig = plt.figure()
+        plt.plot(lmr_trace,'grey')
+        plt.plot(filtered_trace,'black')
+        plt.plot(saccade_starts,np.ones_like(saccade_starts),'mo')
+    
+    # return indicies of start and stop times + saccade magnitude 
+    
+    
     
 def butter_lowpass(cutoff, fs, order=5):
     nyq = 0.5 * fs
@@ -779,9 +820,10 @@ def butter_lowpass(cutoff, fs, order=5):
     b, a = sp.signal.butter(order, normal_cutoff, btype='low', analog=False)
     return b, a
 
-def butter_lowpass_filter(data, cutoff, fs, order=5):
-    b, a = butter_lowpass(cutoff, fs, order=order)
-    y = sp.signal.lfilter(b, a, data)
+def butter_lowpass_filter(data, cutoff=6, fs=10000, order=5): #how does the order change?
+    b, a = butter_lowpass(cutoff, fs, order)
+    #y = sp.signal.lfilter(b, a, data) #what's the difference here? 
+    y = sp.signal.filtfilt(b, a, data)
     return y
       
 def write_to_pdf(f_name,figures_list):
