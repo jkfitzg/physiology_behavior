@@ -52,7 +52,12 @@ class Phys_Flight():
         #self.rwa = np.array(abf['wba_r'])[inc_indicies]
         self.lwa = lwa_degrees
         self.rwa = rwa_degrees
-        self.lmr = self.lwa - self.rwa
+        #self.lmr = self.lwa - self.rwa
+        
+        lmr = self.lwa - self.rwa
+        filtered_lmr = butter_lowpass_filter(lmr)
+        
+        self.lmr = lmr #np.asarray(filtered_lmr.tolist())
         self.ao = np.array(abf['patid'])[inc_indicies]
         
         self.vm = np.array(abf['vm'])[inc_indicies] - 13 #offset for bridge potential
@@ -520,17 +525,25 @@ class Looming_Phys(Phys_Flight):
                     if vm_base_subtract:
                         vm_trace = vm_trace - vm_base
                  
-                    vm_ax.plot(vm_trace,color=this_color)
+                 
+                    non_nan_i = np.where(~np.isnan(vm_trace))[0]
+                    filtered_vm_trace = butter_lowpass_filter(vm_trace[non_nan_i],10)
+                    vm_ax.plot(filtered_vm_trace,color=this_color)
+                    
+                    #vm_ax.plot(vm_trace,color=this_color)
                     #vm_ax.plot(trace_t,vm_trace,color=this_color)
                    
                     #plot WBA signal _____________________________________________________           
-                    wba_trace = vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
+                    wba_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
                     baseline = np.nanmean(wba_trace[baseline_win])
                     wba_trace = wba_trace - baseline  #always subtract the baseline here
                     
-                    wba_ax.plot(moving_average(wba_trace,200),color=this_color)
-                    #wba_ax.plot(trace_t,moving_average(wba_trace,200),color=this_color)
-                
+                    non_nan_i = np.where(~np.isnan(wba_trace))[0]
+                    filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],10)
+                    wba_ax.plot(filtered_wba_trace,color=this_color)
+                    
+                    #wba_ax.plot(butter_lowpass_filter(wba_trace),color=this_color)
+                    
                     #now plot stimulus traces ____________________________________________
                     #stim_ax.plot(trace_t,self.ystim[this_start:this_stop],color=this_color)
                     stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')],color=this_color)
@@ -601,7 +614,7 @@ class Looming_Phys(Phys_Flight):
                     #divide by sampling rate _______________________________
                     def div_sample_rate(x, pos): 
                         #The two args are the value and tick position' 
-                        return int(x/sampling_rate)
+                        return x/sampling_rate
                         
                     formatter = FuncFormatter(div_sample_rate) 
                     all_corr_ax[col].xaxis.set_major_formatter(formatter)
@@ -712,38 +725,38 @@ def read_abf(abf_filename):
         
 def process_wings(raw_wings):
     #here shift wing signal -12 ms in time, filling end with nans
-    shifted_wings = np.empty_like(raw_wings)
-    shifted_wings[:] = np.nan
-    shifted_wings[0:-12] = raw_wings[12:]   
+    shifted_wings = np.zeros_like(raw_wings)
+    shifted_wings[0:-12] = raw_wings[12:]
+    shifted_wings[-11:] = raw_wings[-1]   
     
     #now multiply to convert volts to degrees
     processed_wings = -45 + shifted_wings*33.75
         
-    #also look for dropped wing signals _________________________________
-    
-    artifacts = np.where(abs(np.diff(processed_wings)) > 30)[0]-1
-    
-    artifact_diff = np.diff(artifacts)
-    small_diff_i = np.where(artifact_diff < .2*10000)[0]
-    
-    #now connect the dots between nearby artifacts
-    #for each point in to_connect_times, find the next point, connect these
-    
-    to_connect_is = small_diff_i
-    filled_is = []
-
-    for i in range(np.size(to_connect_is)-1):
-        connect_start_artifact_i = to_connect_is[i]
-        i_start = artifacts[connect_start_artifact_i]
-        i_stop = artifacts[connect_start_artifact_i + 1] #find the artifact closest after this.
-        filled_is = np.concatenate([filled_is,\
-                                    np.arange(i_start,i_stop)])
-    
-    if np.size(filled_is) > 0:
-        #now loop through a few offsets
-        for offset in range(-2,3):      
-            a = 5                   
-            #processed_wings[filled_is.astype(int)+offset] = np.nan          
+    # #also look for dropped wing signals _________________________________
+#     
+#     artifacts = np.where(abs(np.diff(processed_wings)) > 30)[0]-1
+#     
+#     artifact_diff = np.diff(artifacts)
+#     small_diff_i = np.where(artifact_diff < .2*10000)[0]
+#     
+#     #now connect the dots between nearby artifacts
+#     #for each point in to_connect_times, find the next point, connect these
+#     
+#     to_connect_is = small_diff_i
+#     filled_is = []
+# 
+#     for i in range(np.size(to_connect_is)-1):
+#         connect_start_artifact_i = to_connect_is[i]
+#         i_start = artifacts[connect_start_artifact_i]
+#         i_stop = artifacts[connect_start_artifact_i + 1] #find the artifact closest after this.
+#         filled_is = np.concatenate([filled_is,\
+#                                     np.arange(i_start,i_stop)])
+#     
+#     if np.size(filled_is) > 0:
+#         #now loop through a few offsets
+#         for offset in range(-2,3):      
+#             a = 5                   
+#             #processed_wings[filled_is.astype(int)+offset] = np.nan          
             
     #now filter wings   
     #processed_wings = filter_wings(processed_wings)                  
@@ -801,8 +814,8 @@ def find_saccades(raw_lmr_trace,test_plot=True):
     candidate_saccade_starts[np.where(d_candidate_saccade_starts > 3000)[0]-1]
     
     # add last saccade start 
-    if not candidate_saccade_starts:
-        saccade_starts = np.append(saccade_starts,candidate_saccade_starts[-1])
+    #if not candidate_saccade_starts:
+    #    saccade_starts = np.append(saccade_starts,candidate_saccade_starts[-1])
     
     if test_plot:
         fig = plt.figure()
