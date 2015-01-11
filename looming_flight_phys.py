@@ -460,9 +460,9 @@ class Looming_Phys(Phys_Flight):
         #time windows in which to examine turning behaviors. these are by eye
         sampling_rate = 10000
         l_div_v_turn_windows = []
-        l_div_v_turn_windows.append(range(int(2.45*sampling_rate),int(2.8*sampling_rate)))
-        l_div_v_turn_windows.append(range(int(2.95*sampling_rate),int(3.3*sampling_rate)))
-        l_div_v_turn_windows.append(range(int(3.85*sampling_rate),int(4.20*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(2.4*sampling_rate),int(2.75*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(2.75*sampling_rate),int(3.1*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(3.75*sampling_rate),int(4.1*sampling_rate)))
         
         s_iti = 20000   #add iti periods
         baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
@@ -493,7 +493,7 @@ class Looming_Phys(Phys_Flight):
                 n_cnd_trs = np.size(this_cnd_trs)
             
                 #get colormap info _______________________________________________________
-                cmap = plt.cm.get_cmap('jet')     #('gist_ncar')
+                cmap = plt.cm.get_cmap('jet')
                 cNorm  = colors.Normalize(0,n_cnd_trs)
                 scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
             
@@ -537,6 +537,9 @@ class Looming_Phys(Phys_Flight):
                     wba_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
                     baseline = np.nanmean(wba_trace[baseline_win])
                     wba_trace = wba_trace - baseline  #always subtract the baseline here
+                    
+                    #look for saccades within the window around the looming
+                    saccade_time = find_saccades(wba_trace)
                     
                     non_nan_i = np.where(~np.isnan(wba_trace))[0]
                     filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],10)
@@ -640,8 +643,55 @@ class Looming_Phys(Phys_Flight):
             
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
-                plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
-  
+                plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100) 
+                
+    def plot_each_tr_saccade(self,l_div_v_list=[0],
+        wba_lim=[-45,45]): 
+        #for each l/v stim parameter, 
+        #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
+        #three columns of looming direction
+        
+        #time windows in which to examine turning behaviors. these are by eye
+        sampling_rate = 10000
+        l_div_v_turn_windows = []
+        l_div_v_turn_windows.append(range(int(2.45*sampling_rate),int(2.8*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(2.95*sampling_rate),int(3.3*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(3.85*sampling_rate),int(4.20*sampling_rate)))
+        
+        s_iti = 20000   #add iti periods
+        baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
+        
+        #get all traces __________________________________________________________________
+        all_fly_traces = self.get_traces_by_stim('this_fly',s_iti) 
+        
+        #now plot one figure for each looming speed ______________________________________
+        for loom_speed in l_div_v_list: 
+        
+            cnds_to_plot = np.arange(0,7,3) + loom_speed
+            #0 1 2 ; 3 4 5 ; 6 7 8 
+            this_turn_win = l_div_v_turn_windows[loom_speed]
+            
+            #now loop through the conditions/columns. ____________________________________
+            #the signal types are encoded in separate rows(vm, wba, stim, corr)
+            for cnd in cnds_to_plot[1:3]:
+            
+                this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
+                n_cnd_trs = np.size(this_cnd_trs)
+            
+                #loop single trials and plot all signals _________________________________
+                for tr in this_cnd_trs:
+                    
+                    #plot Vm signal ______________________________________________________      
+                    #vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'vm')]
+                    
+                    #plot WBA signal _____________________________________________________           
+                    wba_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
+                    baseline = np.nanmean(wba_trace[baseline_win])
+                    wba_trace = wba_trace - baseline  #always subtract the baseline here
+                    
+                    saccade_time = find_saccades(wba_trace,True)
+                    plt.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')])
+                   
     def get_traces_by_stim(self,fly_name='this_fly',iti=25000):
     #here extract the traces for each of the stimulus times. 
     #align to looming start, and add the first pre stim and post stim intervals
@@ -770,20 +820,7 @@ def process_wings(raw_wings):
             
     return processed_wings
     
-def filter_wings(raw_trace):
-    # Filter requirements.
-    order = 8
-    fs = 1000         # sample rate, Hz
-    cutoff = 6  # desired cutoff frequency of the filter, Hz
-    y = butter_lowpass_filter(raw_trace, cutoff, fs, order)
-    y_shifted = np.copy(y)
-    y_shifted[:-160] = y[160:]
-    y_shifted[0:160] = np.nan
-    filtered_trace = y_shifted
-    
-    return filtered_trace
-    
-def find_saccades(raw_lmr_trace,test_plot=True):
+def find_saccades(raw_lmr_trace,test_plot=False):
     #first fill in nans with nearest signal
     lmr_trace = raw_lmr_trace[~np.isnan(raw_lmr_trace)] 
         #this may give different indexing than input
@@ -797,36 +834,40 @@ def find_saccades(raw_lmr_trace,test_plot=True):
      
     # mark saccade start times -- this could be improved
     diff_thres = .01
+    cross_d_thres = np.where(diff_trace > diff_thres)[0]
     
-    # find time points where the first time point is below
-    # threshold, but the second is above. these are already shifted 
-    # 1 sample right by the diff function
-    saccade_start = diff_trace[1:-1] < diff_thres  
-    saccade_cont  = diff_trace[2:]   >= diff_thres
-    
-    stacked_start_cont = np.vstack([saccade_start,saccade_cont])
-    candidate_saccade_starts = np.where(np.all(stacked_start_cont,axis=0))[0]
+    # #use this to find saccade stops
+#     saccade_start_candidate = diff_trace[1:-1] < diff_thres  
+#     saccade_cont  = diff_trace[2:]   >= diff_thres
+#     stacked_start_cont = np.vstack([saccade_start,saccade_cont])
+#     candidate_saccade_starts = np.where(np.all(stacked_start_cont,axis=0))[0]
     
     # impose a refractory period for saccades
-    d_candidate_saccade_starts = np.diff(candidate_saccade_starts)
+    d_cross_d_thres = np.diff(cross_d_thres)
     
-    saccade_starts = \
-    candidate_saccade_starts[np.where(d_candidate_saccade_starts > 3000)[0]-1]
-    
-    # add last saccade start 
-    #if not candidate_saccade_starts:
-    #    saccade_starts = np.append(saccade_starts,candidate_saccade_starts[-1])
-    
+    refractory_period = .2 * 10000
+    if cross_d_thres.size:
+        saccade_starts = [cross_d_thres[0]] #include first
+        
+        #then take those with gaps between saccade events
+        other_is = np.where(d_cross_d_thres > refractory_period)[0]+1
+        saccade_starts = np.hstack((saccade_starts,cross_d_thres[other_is]))
+    else:
+        saccade_starts = []
+       
     if test_plot:
         fig = plt.figure()
         plt.plot(lmr_trace,'grey')
         plt.plot(filtered_trace,'black')
+        plt.plot(1000*diff_trace,'green')
+        
+        
+        plt.plot(cross_d_thres,np.zeros_like(cross_d_thres),'r.')
         plt.plot(saccade_starts,np.ones_like(saccade_starts),'mo')
     
     # return indicies of start and stop times + saccade magnitude 
-    
-    
-    
+    return saccade_starts
+       
 def butter_lowpass(cutoff, fs, order=5):
     nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq
