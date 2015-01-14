@@ -52,7 +52,12 @@ class Phys_Flight():
         #self.rwa = np.array(abf['wba_r'])[inc_indicies]
         self.lwa = lwa_degrees
         self.rwa = rwa_degrees
-        self.lmr = self.lwa - self.rwa
+        #self.lmr = self.lwa - self.rwa
+        
+        lmr = self.lwa - self.rwa
+        filtered_lmr = butter_lowpass_filter(lmr)
+        
+        self.lmr = lmr #np.asarray(filtered_lmr.tolist())
         self.ao = np.array(abf['patid'])[inc_indicies]
         
         self.vm = np.array(abf['vm'])[inc_indicies] - 13 #offset for bridge potential
@@ -440,26 +445,35 @@ class Looming_Phys(Phys_Flight):
         #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
         #three columns of looming direction
         
-        #labels for looming conditions 
+        sampling_rate = 10000
+        
+        # labels for looming conditions 
         l_div_v_txt = [];
         l_div_v_txt.append('22 l div v')
         l_div_v_txt.append('44 l div v')
         l_div_v_txt.append('88 l div v')
         
-        #time windows in which to examine turning behaviors. these are by eye
-        sampling_rate = 10000
-        l_div_v_turn_windows = []
-        l_div_v_turn_windows.append(range(int(2.3*sampling_rate),int(2.6*sampling_rate)))
-        l_div_v_turn_windows.append(range(int(2.6*sampling_rate),int(2.9*sampling_rate)))
-        l_div_v_turn_windows.append(range(int(3.3*sampling_rate),int(3.7*sampling_rate)))
-        
+
         s_iti = 20000   #add iti periods
         baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
         
-        #get all traces __________________________________________________________________
-        all_fly_traces = self.get_traces_by_stim('this_fly',s_iti) 
+        saccade_l_win =-4500
+        saccade_r_win = 500
         
+
         n_x = 2
+
+        #get all traces __________________________________________________________________
+        #all_fly_traces = self.get_traces_by_stim('this_fly',s_iti)
+        all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=True)
+
+        # get the index of the first max value of the looming ystim
+        # draw a window around here to look for saccades
+        loom_max_i = np.ones(9,dtype=int)
+        for cnd in range(9):
+            loom_max_i[cnd] = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'ystim')].idxmax().median()
+ 
+
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
             fig = plt.figure(figsize=(16.5, 9))
@@ -475,8 +489,7 @@ class Looming_Phys(Phys_Flight):
             #0 3 
             #1 4
             #2 5
-            
-            this_turn_win = l_div_v_turn_windows[loom_speed]
+
             
             #now loop through the conditions/columns. ____________________________________
             #the signal types are encoded in separate rows(vm, wba, stim, corr)
@@ -484,9 +497,11 @@ class Looming_Phys(Phys_Flight):
             
                 this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
                 n_cnd_trs = np.size(this_cnd_trs)
+                
+                this_turn_win = np.arange(loom_max_i[cnd]-5000,loom_max_i[cnd]+5000)
             
                 #get colormap info _______________________________________________________
-                cmap = plt.cm.get_cmap('jet')     #('gist_ncar')
+                cmap = plt.cm.get_cmap('jet') #get a better colormap.m jet's luminance changes are confusing.
                 cNorm  = colors.Normalize(0,n_cnd_trs)
                 scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
             
@@ -508,8 +523,7 @@ class Looming_Phys(Phys_Flight):
             
                 #loop single trials and plot all signals _________________________________
                 for tr, i in zip(this_cnd_trs,range(n_cnd_trs)):
-                    #trace_t = self.t[this_start:this_stop]-self.t[this_start]
-                    
+                
                     this_color = scalarMap.to_rgba(i)        
                     
                     #plot Vm signal ______________________________________________________      
@@ -518,46 +532,106 @@ class Looming_Phys(Phys_Flight):
                     if vm_base_subtract:
                         vm_trace = vm_trace - vm_base
                  
-                    vm_ax.plot(vm_trace,color=this_color)
+                    non_nan_i = np.where(~np.isnan(vm_trace))[0]  #I shouldn't need these. remove nans earlier.
+                    filtered_vm_trace = butter_lowpass_filter(vm_trace[non_nan_i],10)
+                    vm_ax.plot(filtered_vm_trace,color=this_color)
+                    
+                    #vm_ax.plot(vm_trace,color=this_color)
                     #vm_ax.plot(trace_t,vm_trace,color=this_color)
                    
                     #plot WBA signal _____________________________________________________           
-                    wba_trace = vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
+                    wba_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
+                    
+                    # get saccades in this trace
+                    saccade_is = ~np.isnan(all_fly_saccades.loc[:,('this_fly',tr,cnd)])
+                    tr_saccades = np.asarray(all_fly_saccades.loc[saccade_is,('this_fly',tr,cnd)],dtype=int)
+                    
                     baseline = np.nanmean(wba_trace[baseline_win])
                     wba_trace = wba_trace - baseline  #always subtract the baseline here
                     
-                    wba_ax.plot(moving_average(wba_trace,200),color=this_color)
-                    #wba_ax.plot(trace_t,moving_average(wba_trace,200),color=this_color)
-                
+                    non_nan_i = np.where(~np.isnan(wba_trace))[0]  ##check to make sure nans only occur at the end
+                    filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],20)
+                    wba_ax.plot(filtered_wba_trace,color=this_color)
+                    #wba_ax.plot(wba_trace,color=this_color)
+
+                    #plot all saccade times
+                    wba_ax.plot(tr_saccades,filtered_wba_trace[tr_saccades],marker='^', \
+                                linestyle='',color=this_color)
+                    
                     #now plot stimulus traces ____________________________________________
                     #stim_ax.plot(trace_t,self.ystim[this_start:this_stop],color=this_color)
                     stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')],color=this_color)
-                 
-                 
-                #calculate, plot correlations for all traces/cnd _________________________             
-                vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
-                lmr_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
-                lmr_turn_win  = np.nanmean(all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')],0)
+                                  
                 
-                lmr_turn = np.abs(lmr_turn_win - lmr_baseline)
-                #subtract baseline here
+                # select the saccades to consider ________________________________________
+                # use the same indicies for the vm window
+        
+                this_saccade_l_win = loom_max_i[cnd] + saccade_l_win
+                this_saccade_r_win = loom_max_i[cnd] + saccade_r_win
+                cnd_saccade_times = all_fly_saccades.loc[:,('this_fly',slice(None),cnd)].values
+
+                l_bound = cnd_saccade_times > this_saccade_l_win
+                r_bound = cnd_saccade_times < this_saccade_r_win
+                bound_conj = l_bound * r_bound
+                
+                # get the saccade times in range
+                selected_saccade_times = cnd_saccade_times * bound_conj #out of range times are zeroed out
+                
+                # remove nans, since they do not play well with many numpy functions
+                nan_is = np.isnan(selected_saccade_times)
+                selected_saccade_times[nan_is] = 0
+                
+                # now get the index of the first saccade latency in the time window
+                r_is = np.nanargmax(selected_saccade_times,0)
+                first_saccades_times = selected_saccade_times[r_is,np.arange(np.size(r_is))]
+                
+                # exclude time 0 saccades -- out of range or nan
+                nonzero_samples = np.nonzero(first_saccades_times)
+                r_is_nonzero = r_is[nonzero_samples]
+                c_is_nonzero = nonzero_samples
+                
+                saccade_latencies_to_analyze = selected_saccade_times[r_is_nonzero,c_is_nonzero]
+                        # do I need to do feature scaling here? 
+                        
+                # plot saccade to consider
+                wba_ax.plot(saccade_latencies_to_analyze,-15*np.ones_like(saccade_latencies_to_analyze),'*b')
+                
+                
+                # calculate, plot correlations for all traces/cnd _______________________    
+                vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
+                
+                lmr_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
+
                 
                 max_time = np.shape(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])[0]
-                t_steps = range(0,max_time,1000)  #update this for all conditions *********
                 step_size = 1000
+                t_steps = range(0,max_time,step_size)  
+                step_win = 2000
                 
                 for t_start in t_steps:
-                    t_stop = t_start+step_size
-                    this_vm = np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')][t_start:t_stop],0)
-                    non_nan = np.where(~np.isnan(lmr_turn))[0]  #is there a more elegant way to do this? 
-                    delta_vm = this_vm-vm_base
-                    
-                    r,p = sp.stats.pearsonr(delta_vm[non_nan],lmr_turn[non_nan])
+                    t_stop = t_start+step_win
                     t_plot = (t_start+(step_size/2.0))
-                    corr_ax.plot(t_plot,r,'.b')
-                    if p < 0.05: #if significant without correcting for many comparisons
-                        l = corr_ax.plot(t_plot,r,'or',) #plot in red
-                
+                    this_vm = np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')][t_start:t_stop],0)
+                    
+                    delta_vm = this_vm-vm_baseline
+                    r,p = sp.stats.pearsonr(delta_vm[c_is_nonzero], \
+                                            selected_saccade_times[r_is_nonzero,c_is_nonzero][0]-s_iti)
+                                                  
+                    corr_ax.plot(t_plot,r,'.g')
+                    if p < 0.01: #if significant without correcting for many comparisons
+                        corr_ax.plot(t_plot,r,'or',) 
+                    elif p < 0.05:
+                        corr_ax.plot(t_plot,r,'ob',)
+                    
+                    
+                    # the delta WBA analysis, consider all trials (except Nans)
+                    #non_nan = np.where(~np.isnan(lmr_turn))[0]  #is there a more elegant way to do this? 
+
+                    #r,p = sp.stats.pearsonr(delta_vm[non_nan],saccade_latencies[non_nan])
+                    #corr_ax.plot(t_plot,r,'.g')
+                    #if p < 0.05: #if significant without correcting for many comparisons
+                    #    l = corr_ax.plot(t_plot,r,'*m',) 
+                                    
                         
             #now format all subplots _____________________________________________________  
             
@@ -565,14 +639,17 @@ class Looming_Phys(Phys_Flight):
             wba_lim = wba_ax.get_ylim()
             
             #loop though all columns again, format each row ______________________________
+
+
             for col in range(n_x):      
+
                 #create shaded regions of baseline vm and saccade time ___________________
                 vm_min_t = baseline_win[0]
                 vm_max_t = baseline_win[-1]
                 all_vm_ax[col].fill([vm_min_t,vm_max_t,vm_max_t,vm_min_t],[vm_lim[1],vm_lim[1],vm_lim[0],vm_lim[0]],'black',alpha=.1)
                 
-                wba_min_t = l_div_v_turn_windows[loom_speed][0]
-                wba_max_t = l_div_v_turn_windows[loom_speed][-1]
+                wba_min_t = loom_max_i[cnd]+saccade_l_win
+                wba_max_t = loom_max_i[cnd]+saccade_r_win
                 all_wba_ax[col].fill([wba_min_t,wba_max_t,wba_max_t,wba_min_t],
                         [wba_lim[1],wba_lim[1],wba_lim[0],wba_lim[0]],'black',alpha=.1)
                         
@@ -599,7 +676,7 @@ class Looming_Phys(Phys_Flight):
                     #divide by sampling rate _______________________________
                     def div_sample_rate(x, pos): 
                         #The two args are the value and tick position' 
-                        return (x/sampling_rate)
+                        return x/sampling_rate
                         
                     formatter = FuncFormatter(div_sample_rate) 
                     all_corr_ax[col].xaxis.set_major_formatter(formatter)
@@ -625,8 +702,56 @@ class Looming_Phys(Phys_Flight):
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
-                  
-    def get_traces_by_stim(self,fly_name='this_fly',iti=25000):
+                                
+    def plot_each_tr_saccade(self,l_div_v_list=[0],
+        wba_lim=[-45,45]): 
+        #for each l/v stim parameter, 
+        #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
+        #three columns of looming direction
+        
+        #time windows in which to examine turning behaviors. these are by eye
+        sampling_rate = 10000
+        l_div_v_turn_windows = []
+        l_div_v_turn_windows.append(range(int(2.45*sampling_rate),int(2.8*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(2.95*sampling_rate),int(3.3*sampling_rate)))
+        l_div_v_turn_windows.append(range(int(3.85*sampling_rate),int(4.20*sampling_rate)))
+        
+        s_iti = 20000   #add iti periods
+        baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
+        
+        #get all traces __________________________________________________________________
+        all_fly_traces = self.get_traces_by_stim('this_fly',s_iti) 
+        
+        #now plot one figure for each looming speed ______________________________________
+        for loom_speed in l_div_v_list: 
+        
+            cnds_to_plot = np.arange(0,7,3) + loom_speed
+            #0 1 2 ; 3 4 5 ; 6 7 8 
+            this_turn_win = l_div_v_turn_windows[loom_speed]
+            
+            #now loop through the conditions/columns. ____________________________________
+            #the signal types are encoded in separate rows(vm, wba, stim, corr)
+            for cnd in cnds_to_plot[1:3]:
+            
+                this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
+                n_cnd_trs = np.size(this_cnd_trs)
+            
+                #loop single trials and plot all signals _________________________________
+                for tr in this_cnd_trs:
+                    
+                    #plot Vm signal ______________________________________________________      
+                    #vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'vm')]
+                    
+                    #plot WBA signal _____________________________________________________           
+                    wba_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
+                    baseline = np.nanmean(wba_trace[baseline_win])
+                    wba_trace = wba_trace - baseline  #always subtract the baseline here
+                    
+                    saccade_time = find_saccades(wba_trace,True)
+                    plt.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')])
+                   
+    def get_traces_by_stim(self,fly_name='this_fly',iti=25000,get_saccades=False):
+
     #here extract the traces for each of the stimulus times. 
     #align to looming start, and add the first pre stim and post stim intervals
     #here return a data frame of lwa and rwa wing traces
@@ -636,8 +761,10 @@ class Looming_Phys(Phys_Flight):
     #columns are multileveled -- genotype, fly, trial index, trial type, trace
         
         pre_loom_stim_dur = 10000 #add this to the flies? 
-        fly_df = pd.DataFrame()
         
+        fly_df = pd.DataFrame()
+        fly_saccades_df = pd.DataFrame() #keep empty if not tracking all saccades
+       
         for tr in range(self.n_trs):
             this_loom_start = self.tr_starts[tr]
             this_start = this_loom_start - iti
@@ -648,8 +775,8 @@ class Looming_Phys(Phys_Flight):
                          [tr],
                          [this_stim_type],
                          ['lmr','lwa','rwa','vm','ystim']]
-            column_labels = pd.MultiIndex.from_product(iterables,names=['fly','tr_i','tr_type','trace'])
-            
+            column_labels = pd.MultiIndex.from_product(iterables,names=['fly','tr_i','tr_type','trace']) 
+                                                            #is the unsorted tr_type level a problem?    
             
             
             tr_traces = np.asarray([self.lmr[this_start:this_stop],
@@ -658,10 +785,32 @@ class Looming_Phys(Phys_Flight):
                                          self.vm[this_start:this_stop],
                                          self.ystim[this_start:this_stop]]).transpose()  #reshape to avoid transposing
                                           
-            tr_df = pd.DataFrame(tr_traces,columns=column_labels) #,index=time_points)
+            tr_df = pd.DataFrame(tr_traces,columns=column_labels) #,index=time_points) 
             fly_df = pd.concat([fly_df,tr_df],axis=1)
-         
-        return fly_df  
+            
+            
+            if get_saccades:
+                # make a data structure of saccade times in the same format as the 
+                # fly_df trace information
+                # data = saccade start times. now not trying to define saccade stops
+                # rows = saccade number
+                # columns = fly, trial index, trial type
+                
+                 iterables = [[fly_name],
+                             [tr],
+                             [this_stim_type]]
+                 column_labels = pd.MultiIndex.from_product(iterables,names=['fly','tr_i','tr_type']) 
+                                                             
+                 saccade_starts = find_saccades(self.lmr[this_start:this_stop])
+                 tr_saccade_starts_df = pd.DataFrame(np.transpose(saccade_starts),columns=column_labels)            
+                 fly_saccades_df = pd.concat([fly_saccades_df,tr_saccade_starts_df],axis=1)
+            
+        if get_saccades:
+            return fly_df, fly_saccades_df 
+        else:  
+            return fly_df
+        
+     
         
     
 
@@ -709,38 +858,38 @@ def read_abf(abf_filename):
         
 def process_wings(raw_wings):
     #here shift wing signal -12 ms in time, filling end with nans
-    shifted_wings = np.empty_like(raw_wings)
-    shifted_wings[:] = np.nan
-    shifted_wings[0:-12] = raw_wings[12:]   
+    shifted_wings = np.zeros_like(raw_wings)
+    shifted_wings[0:-12] = raw_wings[12:]
+    shifted_wings[-11:] = raw_wings[-1]   
     
     #now multiply to convert volts to degrees
     processed_wings = -45 + shifted_wings*33.75
         
-    #also look for dropped wing signals _________________________________
-    
-    artifacts = np.where(abs(np.diff(processed_wings)) > 30)[0]-1
-    
-    artifact_diff = np.diff(artifacts)
-    small_diff_i = np.where(artifact_diff < .2*10000)[0]
-    
-    #now connect the dots between nearby artifacts
-    #for each point in to_connect_times, find the next point, connect these
-    
-    to_connect_is = small_diff_i
-    filled_is = []
-
-    for i in range(np.size(to_connect_is)-1):
-        connect_start_artifact_i = to_connect_is[i]
-        i_start = artifacts[connect_start_artifact_i]
-        i_stop = artifacts[connect_start_artifact_i + 1] #find the artifact closest after this.
-        filled_is = np.concatenate([filled_is,\
-                                    np.arange(i_start,i_stop)])
-    
-    if np.size(filled_is) > 0:
-        #now loop through a few offsets
-        for offset in range(-2,3):      
-            a = 5                   
-            #processed_wings[filled_is.astype(int)+offset] = np.nan          
+    # #also look for dropped wing signals _________________________________
+#     
+#     artifacts = np.where(abs(np.diff(processed_wings)) > 30)[0]-1
+#     
+#     artifact_diff = np.diff(artifacts)
+#     small_diff_i = np.where(artifact_diff < .2*10000)[0]
+#     
+#     #now connect the dots between nearby artifacts
+#     #for each point in to_connect_times, find the next point, connect these
+#     
+#     to_connect_is = small_diff_i
+#     filled_is = []
+# 
+#     for i in range(np.size(to_connect_is)-1):
+#         connect_start_artifact_i = to_connect_is[i]
+#         i_start = artifacts[connect_start_artifact_i]
+#         i_stop = artifacts[connect_start_artifact_i + 1] #find the artifact closest after this.
+#         filled_is = np.concatenate([filled_is,\
+#                                     np.arange(i_start,i_stop)])
+#     
+#     if np.size(filled_is) > 0:
+#         #now loop through a few offsets
+#         for offset in range(-2,3):      
+#             a = 5                   
+#             #processed_wings[filled_is.astype(int)+offset] = np.nan          
             
     #now filter wings   
     #processed_wings = filter_wings(processed_wings)                  
@@ -754,31 +903,64 @@ def process_wings(raw_wings):
             
     return processed_wings
     
-def filter_wings(raw_trace):
-    # Filter requirements.
-    order = 8
-    fs = 1000         # sample rate, Hz
-    cutoff = 6  # desired cutoff frequency of the filter, Hz
-    y = butter_lowpass_filter(raw_trace, cutoff, fs, order)
-    y_shifted = np.copy(y)
-    y_shifted[:-160] = y[160:]
-    y_shifted[0:160] = np.nan
-    filtered_trace = y_shifted
+def find_saccades(raw_lmr_trace,test_plot=False):
+    #first fill in nans with nearest signal
+    lmr_trace = raw_lmr_trace[~np.isnan(raw_lmr_trace)] 
+        #this may give different indexing than input
+        #ideally fill in nans in wing processing
+
+    # filter lmr signal
+    filtered_trace = butter_lowpass_filter(lmr_trace) #6 hertz
     
-    return filtered_trace
+    # differentiate, take the absolute value
+    diff_trace = abs(np.diff(filtered_trace))
+     
+    # mark saccade start times -- this could be improved
+    diff_thres = .01
+    cross_d_thres = np.where(diff_trace > diff_thres)[0]
     
-def analyze_turns(lmr_trace):
-    a = 5
+    # #use this to find saccade stops
+#     saccade_start_candidate = diff_trace[1:-1] < diff_thres  
+#     saccade_cont  = diff_trace[2:]   >= diff_thres
+#     stacked_start_cont = np.vstack([saccade_start,saccade_cont])
+#     candidate_saccade_starts = np.where(np.all(stacked_start_cont,axis=0))[0]
     
+    # impose a refractory period for saccades
+    d_cross_d_thres = np.diff(cross_d_thres)
+    
+    refractory_period = .2 * 10000
+    if cross_d_thres.size:
+        saccade_starts = [cross_d_thres[0]] #include first
+        
+        #then take those with gaps between saccade events
+        other_is = np.where(d_cross_d_thres > refractory_period)[0]+1
+        saccade_starts = np.hstack((saccade_starts,cross_d_thres[other_is]))
+    else:
+        saccade_starts = []
+       
+    if test_plot:
+        fig = plt.figure()
+        plt.plot(lmr_trace,'grey')
+        plt.plot(filtered_trace,'black')
+        plt.plot(1000*diff_trace,'green')
+        
+        
+        plt.plot(cross_d_thres,np.zeros_like(cross_d_thres),'r.')
+        plt.plot(saccade_starts,np.ones_like(saccade_starts),'mo')
+    
+    # return indicies of start and stop times + saccade magnitude 
+    return saccade_starts
+       
 def butter_lowpass(cutoff, fs, order=5):
     nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq
     b, a = sp.signal.butter(order, normal_cutoff, btype='low', analog=False)
     return b, a
 
-def butter_lowpass_filter(data, cutoff, fs, order=5):
-    b, a = butter_lowpass(cutoff, fs, order=order)
-    y = sp.signal.lfilter(b, a, data)
+def butter_lowpass_filter(data, cutoff=6, fs=10000, order=5): #how does the order change?
+    b, a = butter_lowpass(cutoff, fs, order)
+    #y = sp.signal.lfilter(b, a, data) #what's the difference here? 
+    y = sp.signal.filtfilt(b, a, data)
     return y
       
 def write_to_pdf(f_name,figures_list):
