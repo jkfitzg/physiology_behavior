@@ -561,7 +561,7 @@ class Looming_Phys(Phys_Flight):
                     stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')],color=this_color)
                                   
                 
-                # select the saccades to consider ________________________________________
+                # select the saccades latencies to consider ______________________________
                 # use the same indicies for the vm window
         
                 this_saccade_l_win = loom_max_i[cnd] + saccade_l_win
@@ -592,16 +592,33 @@ class Looming_Phys(Phys_Flight):
                         # do I need to do feature scaling here? 
                         
                 # plot saccade to consider
-                wba_ax.plot(saccade_latencies_to_analyze,-15*np.ones_like(saccade_latencies_to_analyze),'*b')
+                wba_ax.plot(saccade_latencies_to_analyze,-15*np.ones_like(saccade_latencies_to_analyze),'*g')
+                
+                # get saccade displacements ______________________________________________ 
+                # calc max within 
+                lmr_baseline_win = np.arange(loom_max_i[cnd]-15000,loom_max_i[cnd]-5001)
+                this_turn_win = np.arange(loom_max_i[cnd]-5000,loom_max_i[cnd]+5000)
+                
+                lmr_baseline_mean = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
+                lmr_turn_win_traces = all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')]
+                lmr_turn_minus_baseline = lmr_turn_win_traces - lmr_baseline_mean
+                lmr_turn_minus_baseline = np.abs(lmr_turn_minus_baseline)
+            
+                #do I want the absolute value here? yes
+                lmr_turn_abs_max  = np.max(lmr_turn_minus_baseline)
+            
+                # plot npnanmax
+                for i in range(np.size(lmr_turn_abs_max)):
+                    wba_ax.plot(loom_max_i[cnd],lmr_turn_abs_max[i],marker='o',color=scalarMap.to_rgba(i)) 
+            
+                #print np.shape(lmr_baseline_mean)
+                #print np.shape(lmr_turn_win_traces)
+                #print np.shape(lmr_turn_minus_baseline)
+                #print np.shape(lmr_turn_abs_max)
                 
                 
-                # calculate, plot correlations for all traces/cnd _______________________    
+                # calculate, plot correlations for all traces/cnd ________________________   
                 vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
-                
-                lmr_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
-                lmr_turn_win  = np.nanmean(all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')],0)
-                lmr_turn = lmr_turn_win - lmr_baseline
-                #subtract baseline here
                 
                 max_time = np.shape(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])[0]
                 step_size = 1000
@@ -619,18 +636,20 @@ class Looming_Phys(Phys_Flight):
                                                   
                     corr_ax.plot(t_plot,r,'.g')
                     if p < 0.01: #if significant without correcting for many comparisons
-                        corr_ax.plot(t_plot,r,'or',) 
+                        corr_ax.plot(t_plot,r,'*g',) 
                     elif p < 0.05:
-                        corr_ax.plot(t_plot,r,'ob',)
-                    
+                        corr_ax.plot(t_plot,r,'or',)
                     
                     # the delta WBA analysis, consider all trials (except Nans)
-                    #non_nan = np.where(~np.isnan(lmr_turn))[0]  #is there a more elegant way to do this? 
-
-                    #r,p = sp.stats.pearsonr(delta_vm[non_nan],saccade_latencies[non_nan])
-                    #corr_ax.plot(t_plot,r,'.g')
-                    #if p < 0.05: #if significant without correcting for many comparisons
-                    #    l = corr_ax.plot(t_plot,r,'*m',) 
+                    non_nan = np.where(~np.isnan(lmr_turn_abs_max))[0]  #is there a more elegant way to do this? 
+                    
+                
+                    r,p = sp.stats.pearsonr(delta_vm[non_nan],lmr_turn_abs_max[non_nan])
+                    corr_ax.plot(t_plot,r,'.b')
+                    if p < 0.01: #if significant without correcting for many comparisons
+                        corr_ax.plot(t_plot,r,'*b',) 
+                    elif p < 0.05: 
+                        corr_ax.plot(t_plot,r,'om')
                                     
                         
             #now format all subplots _____________________________________________________  
@@ -700,6 +719,7 @@ class Looming_Phys(Phys_Flight):
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100) 
+                plt.close('all')
                 
     def plot_each_tr_saccade(self,l_div_v_list=[0],
         wba_lim=[-45,45]): 
