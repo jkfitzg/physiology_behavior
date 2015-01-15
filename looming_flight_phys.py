@@ -446,7 +446,7 @@ class Looming_Phys(Phys_Flight):
                 #plt.close('all')        
         
     def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[0,1,2],
-        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False): 
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_subtract_mean=False): 
         #for each l/v stim parameter, 
         #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
         #three columns of looming direction
@@ -468,12 +468,23 @@ class Looming_Phys(Phys_Flight):
         #get all traces __________________________________________________________________
         #all_fly_traces = self.get_traces_by_stim('this_fly',s_iti)
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=True)
+        
+           
 
         # get the index of the first max value of the looming ystim
         # draw a window around here to look for saccades
         loom_max_i = np.ones(9,dtype=int)
         for cnd in range(9):
             loom_max_i[cnd] = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'ystim')].idxmax().median()
+            
+            if if_subtract_mean:
+            # figure out how to get this working on multiple lines
+                all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')] = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')] - np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')])
+            
+                all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')] = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')] - np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])
+         
+            
+            
  
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
@@ -525,10 +536,13 @@ class Looming_Phys(Phys_Flight):
                     this_color = scalarMap.to_rgba(i)        
                     
                     #plot Vm signal ______________________________________________________      
-                    vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'vm')]
+                    vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'vm')] 
+                    if if_subtract_mean:
+                        vm_trace = vm_trace - np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')] )
+                    
                     vm_base = np.nanmean(vm_trace[baseline_win])
-                    if vm_base_subtract:
-                        vm_trace = vm_trace - vm_base
+                    #if vm_base_subtract:
+                    #    vm_trace = vm_trace - vm_base
                  
                     non_nan_i = np.where(~np.isnan(vm_trace))[0]  #I shouldn't need these. remove nans earlier.
                     filtered_vm_trace = butter_lowpass_filter(vm_trace[non_nan_i],10)
@@ -545,8 +559,9 @@ class Looming_Phys(Phys_Flight):
                     tr_saccades = np.asarray(all_fly_saccades.loc[saccade_is,('this_fly',tr,cnd)],dtype=int)
                     
                     baseline = np.nanmean(wba_trace[baseline_win])
-                    wba_trace = wba_trace - baseline  #always subtract the baseline here
-                    
+                    if not if_subtract_mean:
+                        wba_trace = wba_trace - baseline  #only if not subtracting mean responses
+                     
                     non_nan_i = np.where(~np.isnan(wba_trace))[0]  ##check to make sure nans only occur at the end
                     filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],20)
                     wba_ax.plot(filtered_wba_trace,color=this_color)
@@ -630,7 +645,12 @@ class Looming_Phys(Phys_Flight):
                     t_plot = (t_start+(step_size/2.0))
                     this_vm = np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')][t_start:t_stop],0)
                     
+                    # do I want to subtract this? 
+                    #if if_subtract_mean:
+                    #else:
                     delta_vm = this_vm-vm_baseline
+                    
+                    
                     r,p = sp.stats.pearsonr(delta_vm[c_is_nonzero], \
                                             selected_saccade_times[r_is_nonzero,c_is_nonzero][0]-s_iti)
                                                   
@@ -719,7 +739,7 @@ class Looming_Phys(Phys_Flight):
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100) 
-                plt.close('all')
+                #plt.close('all')
                 
     def plot_each_tr_saccade(self,l_div_v_list=[0],
         wba_lim=[-45,45]): 
