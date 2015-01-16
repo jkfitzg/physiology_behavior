@@ -464,6 +464,7 @@ class Looming_Phys(Phys_Flight):
         n_x = 2
         n_cnds = 6
 
+
         #get all traces __________________________________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=True)
 
@@ -597,6 +598,32 @@ class Looming_Phys(Phys_Flight):
                 wba_ax.plot(saccade_latencies_to_analyze,-15*np.ones_like(saccade_latencies_to_analyze),'*b')
                 
                 
+                # calculate saccade displacements _________________________________________________________
+                # calc max within 
+                lmr_baseline_win = np.arange(loom_max_i[cnd]-15000,loom_max_i[cnd]-5001)
+                this_turn_win = np.arange(loom_max_i[cnd]-5000,loom_max_i[cnd]+5000)
+                
+                lmr_baseline_mean = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
+                lmr_turn_win_traces = all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')]
+                lmr_turn_minus_baseline = lmr_turn_win_traces - lmr_baseline_mean
+                lmr_turn_minus_baseline = np.abs(lmr_turn_minus_baseline)
+            
+                #do I want the absolute value here? yes
+                lmr_turn_abs_max  = np.max(lmr_turn_minus_baseline)
+            
+                # plot npnanmax
+                for i in range(np.size(lmr_turn_abs_max)):
+                    wba_ax.plot(loom_max_i[cnd],lmr_turn_abs_max[i],marker='o',color=scalarMap.to_rgba(i)) 
+            
+                #print np.shape(lmr_baseline_mean)
+                #print np.shape(lmr_turn_win_traces)
+                #print np.shape(lmr_turn_minus_baseline)
+                #print np.shape(lmr_turn_abs_max)
+                
+                
+                
+                
+                
                 # calculate, plot correlations for all traces/cnd _______________________    
                 vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
                 
@@ -606,7 +633,7 @@ class Looming_Phys(Phys_Flight):
                 max_time = np.shape(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])[0]
                 step_size = 1000
                 t_steps = range(0,max_time,step_size)  
-                step_win = 3000
+                step_win = 1000
                 
                 for t_start in t_steps:
                     t_stop = t_start+step_win
@@ -625,9 +652,9 @@ class Looming_Phys(Phys_Flight):
                     
                     
                     # the delta WBA analysis, consider all trials (except Nans)
-                    non_nan = np.where(~np.isnan(lmr_turn))[0]  #is there a more elegant way to do this? 
+                    non_nan = np.where(~np.isnan(lmr_turn_abs_max))[0]  #is there a more elegant way to do this? 
 
-                    r,p = sp.stats.pearsonr(delta_vm[non_nan],saccade_latencies[non_nan])
+                    r,p = sp.stats.pearsonr(delta_vm[non_nan],lmr_turn_abs_max[non_nan])
                     corr_ax.plot(t_plot,r,'.b')
                     if p < 0.01: #if significant without correcting for many comparisons
                         corr_ax.plot(t_plot,r,'om',) 
@@ -703,7 +730,8 @@ class Looming_Phys(Phys_Flight):
             
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
-                plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
+                plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100) 
+                plt.close('all')   
 
                                 
     def plot_each_tr_saccade(self,l_div_v_list=[0],
