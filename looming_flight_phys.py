@@ -460,6 +460,7 @@ class Looming_Phys(Phys_Flight):
         saccade_l_win =-4500
         saccade_r_win = 500
         
+
         n_x = 2
         n_cnds = 6
 
@@ -620,16 +621,18 @@ class Looming_Phys(Phys_Flight):
                     if p < 0.01: #if significant without correcting for many comparisons
                         corr_ax.plot(t_plot,r,'or',) 
                     elif p < 0.05:
-                        corr_ax.plot(t_plot,r,'ob',)
+                        corr_ax.plot(t_plot,r,'og',)
                     
                     
                     # the delta WBA analysis, consider all trials (except Nans)
-                    #non_nan = np.where(~np.isnan(lmr_turn))[0]  #is there a more elegant way to do this? 
+                    non_nan = np.where(~np.isnan(lmr_turn))[0]  #is there a more elegant way to do this? 
 
-                    #r,p = sp.stats.pearsonr(delta_vm[non_nan],saccade_latencies[non_nan])
-                    #corr_ax.plot(t_plot,r,'.g')
-                    #if p < 0.05: #if significant without correcting for many comparisons
-                    #    l = corr_ax.plot(t_plot,r,'*m',) 
+                    r,p = sp.stats.pearsonr(delta_vm[non_nan],saccade_latencies[non_nan])
+                    corr_ax.plot(t_plot,r,'.b')
+                    if p < 0.01: #if significant without correcting for many comparisons
+                        corr_ax.plot(t_plot,r,'om',) 
+                    elif p < 0.05:
+                        corr_ax.plot(t_plot,r,'ob',)
                                     
                         
             #now format all subplots _____________________________________________________  
@@ -701,8 +704,7 @@ class Looming_Phys(Phys_Flight):
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100)    
-                
-                
+
                                 
     def plot_each_tr_saccade(self,l_div_v_list=[0],
         wba_lim=[-45,45]): 
