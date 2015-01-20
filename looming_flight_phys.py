@@ -446,46 +446,32 @@ class Looming_Phys(Phys_Flight):
                 #plt.close('all')        
         
     def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract = False,l_div_v_list=[0,1,2],
-        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_subtract_mean=False): 
-        #for each l/v stim parameter, 
-        #make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
-        #three columns of looming direction
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_x_zoom=True): 
         
-        sampling_rate = 10000
+        # for each l/v stim parameter, 
+        # make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
+        # three columns of looming direction
         
-        # labels for looming conditions 
-        l_div_v_txt = [];
-        l_div_v_txt.append('22 l div v')
-        l_div_v_txt.append('44 l div v')
-        l_div_v_txt.append('88 l div v')
+        sampling_rate = 10000 # in hertz
+        s_iti = 2 * sampling_rate
+        baseline_win = range(0,int(.5*sampling_rate))  
+                # time relative loom start - s_iti
+                # do not average out the visual onset
         
-        s_iti = 20000   #add iti periods
-        baseline_win = range(0,5000)  #be careful not to average out the visual transient here.
+        l_div_v_txt = ['22 l div v','44 l div v','88 l div v']
         
-        saccade_l_win =-4500
-        saccade_r_win = 500
+        # define saccade window relative loom max time
+        l_div_v_saccade_win = np.array([[-.25,.25],[-.75,.5],[-.5,.5]])*sampling_rate
+        l_div_v_saccade_win = l_div_v_saccade_win.astype(int)               
+                       
+        # define zoomed x axis range relative loom start - s_iti
+        l_div_v_zoom_win = np.array([[s_iti,s_iti+(1.1*sampling_rate)],  \
+                                     [s_iti,s_iti+(1.75*sampling_rate)], \
+                                     [s_iti,s_iti+(2.75*sampling_rate)]],dtype=int)
         
-        #get all traces __________________________________________________________________
-        #all_fly_traces = self.get_traces_by_stim('this_fly',s_iti)
+        #get all traces and detect saccades ______________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=True)
-        
            
-
-        # get the index of the first max value of the looming ystim
-        # draw a window around here to look for saccades
-        loom_max_i = np.ones(9,dtype=int)
-        for cnd in range(9):
-            loom_max_i[cnd] = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'ystim')].idxmax().median()
-            
-            if if_subtract_mean:
-            # figure out how to get this working on multiple lines
-                all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')] = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')] - np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')])
-            
-                all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')] = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')] - np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])
-         
-            
-            
- 
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
             fig = plt.figure(figsize=(16.5, 9))
@@ -497,61 +483,62 @@ class Looming_Phys(Phys_Flight):
             all_stim_ax = []
             all_corr_ax = []
         
-            cnds_to_plot = np.arange(0,7,3) + loom_speed
-            #0 1 2 ; 3 4 5 ; 6 7 8 
+            cnds_to_plot = np.arange(0,7,3) + loom_speed  # next add a boolean for summer experiments
+            # 0 1 2 ; 3 4 5 ; 6 7 8 
             
-            #now loop through the conditions/columns. ____________________________________
-            #the signal types are encoded in separate rows(vm, wba, stim, corr)
+            # get the index of the first max value of the looming ystim
+            # draw a window around here to look for saccades
+            loom_max_i = all_fly_traces.loc[:,('this_fly',slice(None),cnds_to_plot,'ystim')].idxmax().median()
+            
+            # get saccade window. defined relative loom_max_i ________________________
+            l_saccade_win = int(loom_max_i + l_div_v_saccade_win[loom_speed][0])
+            r_saccade_win = int(loom_max_i + l_div_v_saccade_win[loom_speed][1])
+            this_turn_win = np.arange(l_saccade_win,r_saccade_win) 
+            
+            max_t = int(loom_max_i + 1*sampling_rate)
+            
+            # now loop through the conditions/columns. ____________________________________
+            # the signal types are encoded in separate rows(vm, wba, stim, corr)
             for cnd, grid_col in zip(cnds_to_plot,range(3)):
             
                 this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
                 n_cnd_trs = np.size(this_cnd_trs)
                 
-                this_turn_win = np.arange(loom_max_i[cnd]-5000,loom_max_i[cnd]+5000)
-            
-                #get colormap info _______________________________________________________
-                cmap = plt.cm.get_cmap('jet') #get a better colormap.m jet's luminance changes are confusing.
+                # get colormap info ______________________________________________________
+                cmap = plt.cm.get_cmap('jet') #get a better colormap.m jet's luminance changes are confusing. **********
                 cNorm  = colors.Normalize(0,n_cnd_trs)
                 scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
             
-                #create subplots _________________________________________________________              
+                # create subplots ________________________________________________________              
                 if grid_col == 0:
                     vm_ax = plt.subplot(gs[0,grid_col])
-                    wba_ax = plt.subplot(gs[1,grid_col],sharex=vm_ax) 
+                    wba_ax = plt.subplot(gs[1,grid_col], sharex=vm_ax) 
                     stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax)    
                     corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax)        
                 else:
-                    vm_ax = plt.subplot(gs[0,grid_col],sharey=all_vm_ax[0])
+                    vm_ax = plt.subplot(gs[0,grid_col],  sharey=all_vm_ax[0])
                     wba_ax = plt.subplot(gs[1,grid_col], sharex=vm_ax,sharey=all_wba_ax[0]) 
                     stim_ax = plt.subplot(gs[2,grid_col],sharex=vm_ax,sharey=all_stim_ax[0])    
                     corr_ax = plt.subplot(gs[3,grid_col],sharex=vm_ax,sharey=all_corr_ax[0])
-                all_vm_ax.append(vm_ax)
+                all_vm_ax.append(vm_ax)   #can I preallocate the size here? data types? *****************
                 all_wba_ax.append(wba_ax) 
                 all_stim_ax.append(stim_ax)
                 all_corr_ax.append(corr_ax)
             
-                #loop single trials and plot all signals _________________________________
+                # loop single trials and plot all signals ________________________________
                 for tr, i in zip(this_cnd_trs,range(n_cnd_trs)):
                 
                     this_color = scalarMap.to_rgba(i)        
                     
-                    #plot Vm signal ______________________________________________________      
+                    # plot Vm signal _____________________________________________________      
                     vm_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'vm')] 
-                    if if_subtract_mean:
-                        vm_trace = vm_trace - np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')] )
+                    non_nan_i = np.where(~np.isnan(vm_trace))[0]  #I shouldn't need these. remove nans earlier. ****************
+                    vm_ax.plot(vm_trace[non_nan_i],color=this_color)
                     
-                    vm_base = np.nanmean(vm_trace[baseline_win])
-                    #if vm_base_subtract:
-                    #    vm_trace = vm_trace - vm_base
-                 
-                    non_nan_i = np.where(~np.isnan(vm_trace))[0]  #I shouldn't need these. remove nans earlier.
-                    filtered_vm_trace = butter_lowpass_filter(vm_trace[non_nan_i],10)
-                    vm_ax.plot(filtered_vm_trace,color=this_color)
+                    #filtered_vm_trace = butter_lowpass_filter(vm_trace[non_nan_i],10)
+                    #vm_ax.plot(filtered_vm_trace,color=this_color)
                     
-                    #vm_ax.plot(vm_trace,color=this_color)
-                    #vm_ax.plot(trace_t,vm_trace,color=this_color)
-                   
-                    #plot WBA signal _____________________________________________________           
+                    # plot WBA signal ____________________________________________________           
                     wba_trace = all_fly_traces.loc[:,('this_fly',tr,cnd,'lmr')]
                     
                     # get saccades in this trace
@@ -559,35 +546,27 @@ class Looming_Phys(Phys_Flight):
                     tr_saccades = np.asarray(all_fly_saccades.loc[saccade_is,('this_fly',tr,cnd)],dtype=int)
                     
                     baseline = np.nanmean(wba_trace[baseline_win])
-                    if not if_subtract_mean:
-                        wba_trace = wba_trace - baseline  #only if not subtracting mean responses
+                    wba_trace = wba_trace - baseline  
                      
-                    non_nan_i = np.where(~np.isnan(wba_trace))[0]  ##check to make sure nans only occur at the end
-                    filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],20)
+                    non_nan_i = np.where(~np.isnan(wba_trace))[0]  ##remove nans earlier/check to make sure nans only occur at the end
+                    filtered_wba_trace = butter_lowpass_filter(wba_trace[non_nan_i],30)
                     wba_ax.plot(filtered_wba_trace,color=this_color)
-                    #wba_ax.plot(wba_trace,color=this_color)
 
-                    #plot all saccade times
+                    # plot all saccade times
                     wba_ax.plot(tr_saccades,filtered_wba_trace[tr_saccades],marker='^', \
-                                linestyle='',color=this_color)
+                                markersize=8,linestyle='',color=this_color)
                     
                     #now plot stimulus traces ____________________________________________
-                    #stim_ax.plot(trace_t,self.ystim[this_start:this_stop],color=this_color)
                     stim_ax.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')],color=this_color)
                                   
                 
                 # select the saccades latencies to consider ______________________________
-                # use the same indicies for the vm window
         
-                this_saccade_l_win = loom_max_i[cnd] + saccade_l_win
-                this_saccade_r_win = loom_max_i[cnd] + saccade_r_win
-                cnd_saccade_times = all_fly_saccades.loc[:,('this_fly',slice(None),cnd)].values
-
-                l_bound = cnd_saccade_times > this_saccade_l_win
-                r_bound = cnd_saccade_times < this_saccade_r_win
-                bound_conj = l_bound * r_bound
-                
                 # get the saccade times in range
+                cnd_saccade_times = all_fly_saccades.loc[:,('this_fly',slice(None),cnd)].values
+                l_bound = cnd_saccade_times > l_saccade_win
+                r_bound = cnd_saccade_times < r_saccade_win
+                bound_conj = l_bound * r_bound
                 selected_saccade_times = cnd_saccade_times * bound_conj #out of range times are zeroed out
                 
                 # remove nans, since they do not play well with many numpy functions
@@ -605,65 +584,52 @@ class Looming_Phys(Phys_Flight):
                 
                 saccade_latencies_to_analyze = selected_saccade_times[r_is_nonzero,c_is_nonzero]
                         # do I need to do feature scaling here? 
-                        
-                # plot saccade to consider
-                wba_ax.plot(saccade_latencies_to_analyze,-15*np.ones_like(saccade_latencies_to_analyze),'*g')
                 
                 # get saccade displacements ______________________________________________ 
                 # calc max within 
-                lmr_baseline_win = np.arange(loom_max_i[cnd]-15000,loom_max_i[cnd]-5001)
-                this_turn_win = np.arange(loom_max_i[cnd]-5000,loom_max_i[cnd]+5000)
+                lmr_baseline_win = np.arange(loom_max_i-15000,loom_max_i-5001)
                 
                 lmr_baseline_mean = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'lmr')],0)
-                lmr_turn_win_traces = all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')]
-                lmr_turn_minus_baseline = lmr_turn_win_traces - lmr_baseline_mean
-                lmr_turn_minus_baseline = np.abs(lmr_turn_minus_baseline)
-            
-                #do I want the absolute value here? yes
-                lmr_turn_abs_max  = np.max(lmr_turn_minus_baseline)
-            
-                # plot npnanmax
-                for i in range(np.size(lmr_turn_abs_max)):
-                    wba_ax.plot(loom_max_i[cnd],lmr_turn_abs_max[i],marker='o',color=scalarMap.to_rgba(i)) 
-            
-                #print np.shape(lmr_baseline_mean)
-                #print np.shape(lmr_turn_win_traces)
-                #print np.shape(lmr_turn_minus_baseline)
-                #print np.shape(lmr_turn_abs_max)
+                lmr_turn_win_traces = all_fly_traces.loc[this_turn_win,('this_fly',slice(None),cnd,'lmr')].as_matrix()
+                delta_lmr_traces = lmr_turn_win_traces - lmr_baseline_mean
                 
+                # filter, take the absolute value for each trial 
+                filtered_delta_lmr_traces = np.empty_like(delta_lmr_traces)
+                for tr_i in range(np.shape(delta_lmr_traces)[1]):
+                    filtered_delta_lmr_traces[:,tr_i] = np.abs(butter_lowpass_filter(delta_lmr_traces[:,tr_i],30))
+            
+                # now find the max displacement during the saccade window for each trace
+                lmr_turn_abs_max  = np.max(filtered_delta_lmr_traces,0)
+                for i in range(np.size(lmr_turn_abs_max)):
+                    wba_ax.plot(loom_max_i,lmr_turn_abs_max[i],marker='_', \
+                    color=scalarMap.to_rgba(i),markersize=20) 
                 
                 # calculate, plot correlations for all traces/cnd ________________________   
                 vm_baseline = np.nanmean(all_fly_traces.loc[baseline_win,('this_fly',slice(None),cnd,'vm')],0)
                 
-                max_time = np.shape(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')])[0]
-                step_size = 1000
-                t_steps = range(0,max_time,step_size)  
-                step_win = 2000
+                step_size = 500
+                t_steps = range(0,max_t,step_size)  
+                step_win = 1000
                 
                 for t_start in t_steps:
                     t_stop = t_start+step_win
                     t_plot = (t_start+(step_size/2.0))
-                    this_vm = np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')][t_start:t_stop],0)
                     
-                    # do I want to subtract this? 
-                    #if if_subtract_mean:
-                    #else:
+                    this_vm = np.nanmean(all_fly_traces.loc[:,('this_fly',slice(None),cnd,'vm')][t_start:t_stop],0)
                     delta_vm = this_vm-vm_baseline
                     
-                    
+                    # correlate vm with saccade latencies ________________________________
                     r,p = sp.stats.pearsonr(delta_vm[c_is_nonzero], \
-                                            selected_saccade_times[r_is_nonzero,c_is_nonzero][0]-s_iti)
-                                                  
+                                            selected_saccade_times[r_is_nonzero,c_is_nonzero][0]-s_iti) #should I subtract?
                     corr_ax.plot(t_plot,r,'.g')
                     if p < 0.01: #if significant without correcting for many comparisons
                         corr_ax.plot(t_plot,r,'*g',) 
                     elif p < 0.05:
                         corr_ax.plot(t_plot,r,'or',)
                     
-                    # the delta WBA analysis, consider all trials (except Nans)
-                    non_nan = np.where(~np.isnan(lmr_turn_abs_max))[0]  #is there a more elegant way to do this? 
-                    
-                
+                    # correlate vm with saccade magnitude ________________________________
+                    # exclude trials with nan. later process wings without nans
+                    non_nan = np.where(~np.isnan(lmr_turn_abs_max))[0]  
                     r,p = sp.stats.pearsonr(delta_vm[non_nan],lmr_turn_abs_max[non_nan])
                     corr_ax.plot(t_plot,r,'.b')
                     if p < 0.01: #if significant without correcting for many comparisons
@@ -671,9 +637,8 @@ class Looming_Phys(Phys_Flight):
                     elif p < 0.05: 
                         corr_ax.plot(t_plot,r,'om')
                                     
-                        
             #now format all subplots _____________________________________________________  
-            
+           
             vm_lim = vm_ax.get_ylim()
             wba_lim = wba_ax.get_ylim()
             
@@ -684,23 +649,25 @@ class Looming_Phys(Phys_Flight):
                 vm_max_t = baseline_win[-1]
                 all_vm_ax[col].fill([vm_min_t,vm_max_t,vm_max_t,vm_min_t],[vm_lim[1],vm_lim[1],vm_lim[0],vm_lim[0]],'black',alpha=.1)
                 
-                wba_min_t = loom_max_i[cnd]+saccade_l_win
-                wba_max_t = loom_max_i[cnd]+saccade_r_win
-                all_wba_ax[col].fill([wba_min_t,wba_max_t,wba_max_t,wba_min_t],
+                all_wba_ax[col].fill([l_saccade_win,r_saccade_win,r_saccade_win,l_saccade_win],
                         [wba_lim[1],wba_lim[1],wba_lim[0],wba_lim[0]],'black',alpha=.1)
                         
-                #set the ylim for the stimulus and correlation rows ______________________
+                # set the ylim for the stimulus and correlation rows ______________________
                 all_stim_ax[col].set_ylim([0,10])
                 all_corr_ax[col].set_ylim([-1,1])
                  
-                #label axes, show xlim and ylim __________________________________________
+                # label axes, show xlim and ylim __________________________________________
                 
-                #remove all time xticklabels
+                # remove all time xticklabels
                 all_vm_ax[col].tick_params(labelbottom='off')
                 all_wba_ax[col].tick_params(labelbottom='off')
                 all_stim_ax[col].tick_params(labelbottom='off')
                 all_corr_ax[col].tick_params(labelbottom='off')
                 
+                if if_x_zoom:
+                    all_vm_ax[col].set_xlim(l_div_v_zoom_win[loom_speed])
+                else:
+                    all_vm_ax[col].set_xlim([0,max_t])
                 
                 if col == 0: #label yaxes
                     all_vm_ax[col].set_ylabel('Vm (mV)')
@@ -708,24 +675,25 @@ class Looming_Phys(Phys_Flight):
                     all_stim_ax[col].set_ylabel('Stim (frame)')
                     all_corr_ax[col].set_ylabel('Corr(Vm, WBA)')
                     
-                    #label time x axis for just col 0 ______________________
-                    #divide by sampling rate _______________________________
+                    # label time x axis for just col 0 ______________________
+                    # divide by sampling rate _______________________________
                     def div_sample_rate(x, pos): 
-                        #The two args are the value and tick position' 
-                        return x/sampling_rate
+                        #The two args are the value and tick position 
+                        return (x-s_iti)/sampling_rate
                         
                     formatter = FuncFormatter(div_sample_rate) 
                     all_corr_ax[col].xaxis.set_major_formatter(formatter)
                                         
                     all_corr_ax[col].tick_params(labelbottom='on')
-                    all_corr_ax[col].set_xlabel('Time (s)') 
+                    all_corr_ax[col].set_xlabel('Time from loom start (s)') 
 
-                else: #remove all ylabels 
+                else: # remove all ylabels 
                     all_vm_ax[col].tick_params(labelleft='off')
                     all_wba_ax[col].tick_params(labelleft='off')
                     all_stim_ax[col].tick_params(labelleft='off')
                     all_corr_ax[col].tick_params(labelleft='off')
-                 
+                    
+                  
             #now annotate stimulus positions, title ______________________________________      
             fig.text(.22,.905,'Left',fontsize=14)
             fig.text(.495,.905,'Center',fontsize=14)
@@ -740,6 +708,7 @@ class Looming_Phys(Phys_Flight):
                 saveas_path = '/Users/jamie/bin/figures/'
                 plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100) 
                 #plt.close('all')
+                
                 
     def plot_each_tr_saccade(self,l_div_v_list=[0],
         wba_lim=[-45,45]): 
@@ -787,6 +756,8 @@ class Looming_Phys(Phys_Flight):
                     
                     saccade_time = find_saccades(wba_trace,True)
                     plt.plot(all_fly_traces.loc[:,('this_fly',tr,cnd,'ystim')])
+    
+    
                    
     def get_traces_by_stim(self,fly_name='this_fly',iti=25000,get_saccades=False):
     #here extract the traces for each of the stimulus times. 
