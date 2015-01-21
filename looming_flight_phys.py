@@ -444,7 +444,7 @@ class Looming_Phys(Phys_Flight):
                 #plt.close('all')        
         
     def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract=True,l_div_v_list=[0,1,2],
-        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_x_zoom=True): 
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_x_zoom=True,if_summer_exp=True): 
         
         # for each l/v stim parameter, 
         # make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
@@ -462,6 +462,8 @@ class Looming_Phys(Phys_Flight):
         l_div_v_saccade_win = np.array([[-.25,.25],[-.75,.5],[-.5,.5]])*sampling_rate
         l_div_v_saccade_win = l_div_v_saccade_win.astype(int)               
                        
+                    
+        # will these vary for summer cells? ****************************************                
         # define zoomed x axis range relative loom start - s_iti
         l_div_v_zoom_win = np.array([[s_iti,s_iti+(.9*sampling_rate)],  \
                                      [s_iti,s_iti+(1.75*sampling_rate)], \
@@ -469,11 +471,16 @@ class Looming_Phys(Phys_Flight):
         
         #get all traces and detect saccades ______________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=True)
+        
+        if if_summer_exp:
+            n_x = 2
+        else:
+            n_x = 3
            
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
             fig = plt.figure(figsize=(16.5, 9))
-            gs = gridspec.GridSpec(4,3,width_ratios=[1,1,1],height_ratios=[1,1,.2,.5])
+            gs = gridspec.GridSpec(4,n_x,height_ratios=[1,1,.2,.5])
         
             #store all subplots for formatting later           
             all_vm_ax = []
@@ -497,7 +504,7 @@ class Looming_Phys(Phys_Flight):
             
             # now loop through the conditions/columns. ____________________________________
             # the signal types are encoded in separate rows(vm, wba, stim, corr)
-            for cnd, grid_col in zip(cnds_to_plot,range(3)):
+            for cnd, grid_col in zip(cnds_to_plot,range(n_x)):
             
                 this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
                 n_cnd_trs = np.size(this_cnd_trs)
@@ -647,7 +654,7 @@ class Looming_Phys(Phys_Flight):
             wba_lim = wba_ax.get_ylim()
             
             #loop though all columns again, format each row ______________________________
-            for col, cnd in zip(range(3),cnds_to_plot):      
+            for col, cnd in zip(range(n_x),cnds_to_plot):      
                 #create shaded regions of baseline vm and saccade time ___________________
                 vm_min_t = baseline_win[0]
                 vm_max_t = baseline_win[-1]
@@ -704,7 +711,8 @@ class Looming_Phys(Phys_Flight):
                   
             #now annotate stimulus positions, title ______________________________________      
             fig.text(.22,.905,'Left',fontsize=14)
-            fig.text(.495,.905,'Center',fontsize=14)
+            if not if_summer_exp:
+                fig.text(.495,.905,'Center',fontsize=14)
             fig.text(.775,.905,'Right',fontsize=14)
             
             figure_txt = title_txt + ' '+l_div_v_txt[loom_speed]
@@ -718,7 +726,7 @@ class Looming_Phys(Phys_Flight):
                     plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr_zoomed.png',dpi=100) 
                 else:
                     plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100) 
-                plt.close('all')
+                #plt.close('all')
                 
                 
     def plot_each_tr_saccade(self,l_div_v_list=[0],
@@ -892,31 +900,33 @@ def clean_lmr_signal(lmr,title_txt='',if_plot=False):
     d_lmr = np.diff(lmr)
     artifacts = np.where(abs(d_lmr) > 35)[0]-1
     
-    artifact_gap_start_is = np.where(np.diff(artifacts) > .2*10000)[0]+1
-    artifact_gap_start_is = np.hstack((0,artifact_gap_start_is))  # add first start
+    if np.size(artifacts) >= 1:
+        artifact_gap_start_is = np.where(np.diff(artifacts) > .2*10000)[0]+1
+        artifact_gap_start_is = np.hstack((0,artifact_gap_start_is))  # add first start
     
-    artifact_gap_stop_is = artifact_gap_start_is[1:]-1
-    artifact_gap_stop_is = np.hstack((artifact_gap_stop_is,np.size(artifacts)-1)) # add last
-   
-    # now loop though all of these blanked periods, fill with previous/last real value
-    for start_i, stop_i in zip(artifact_gap_start_is,artifact_gap_stop_is):
-        fill_i = artifacts[start_i] - 1
-        if fill_i < 0: 
-            fill_i = lmr_stop_i[stop_i] + 1
+        artifact_gap_stop_is = artifact_gap_start_is[1:]-1
+        artifact_gap_stop_is = np.hstack((artifact_gap_stop_is,np.size(artifacts)-1)) # add last
+
+        # now loop though all of these blanked periods, fill with previous/last real value
+        for start_i, stop_i in zip(artifact_gap_start_is,artifact_gap_stop_is):
+            fill_i = artifacts[start_i] - 1
+            if fill_i < 0: 
+                fill_i = lmr_stop_i[stop_i] + 1
             
-        lmr_start_i = artifacts[start_i]
-        lmr_stop_i = artifacts[stop_i] + 10
+            lmr_start_i = artifacts[start_i]
+            lmr_stop_i = artifacts[stop_i] + 10
         
-        cleaned_lmr[lmr_start_i:lmr_stop_i] = cleaned_lmr[fill_i]
+            cleaned_lmr[lmr_start_i:lmr_stop_i] = cleaned_lmr[fill_i]
             
     if if_plot:
         fig = plt.figure()
         plt.plot(lmr,color=blue)
-        plt.plot(artifacts,lmr[artifacts],'*c')
-        plt.plot(artifacts[artifact_gap_start_is],np.ones_like(artifact_gap_start_is),'og')
-        plt.plot(artifacts[artifact_gap_stop_is]+10,np.ones_like(artifact_gap_stop_is),'om')
-        plt.plot(cleaned_lmr,color=purple)
-        plt.title(title_txt)
+        if artifacts:
+            plt.plot(artifacts,lmr[artifacts],'*c')
+            plt.plot(artifacts[artifact_gap_start_is],np.ones_like(artifact_gap_start_is),'og')
+            plt.plot(artifacts[artifact_gap_stop_is]+10,np.ones_like(artifact_gap_stop_is),'om')
+            plt.plot(cleaned_lmr,color=purple)
+            plt.title(title_txt)
 
     return cleaned_lmr
      
