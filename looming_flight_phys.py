@@ -49,21 +49,23 @@ class Phys_Flight():
         self.rwa = process_wings(rwa_v)
         
         lmr = self.lwa - self.rwa
-        self.lmr = clean_lmr_signal(lmr)
+        self.raw_lmr = lmr
+        self.lmr = lmr
         
         self.ao = np.array(abf['patid'])[inc_indicies]
         
         self.vm = np.array(abf['vm'])[inc_indicies] - 13 #offset for bridge potential
         self.tach = np.array(abf['tach'])[inc_indicies]
+        self.n_nonflight_trs = 0 #will update
             
-    def _is_flying(self, start_i, stop_i, percent_thres = .95):  #fix this critera
+    def _is_flying(self, start_i, stop_i, percent_thres = .90):  #fix this critera
         #check that animal is flying using the tachometer signal
      
         #iterate through the trace in steps of 25 ms (250 with typical 10,000 sampling rate)
         #min flight rate of interest = 100 wing beats/s
         tach_range_thres = 2
         stroke_range_thres = 1
-        step_size = 250
+        step_size = 350 #250
         i_steps = range(start_i,stop_i,step_size)
         n_tests = np.size(i_steps)
         flight_tests = np.ones(n_tests, dtype=bool)    
@@ -91,9 +93,62 @@ class Looming_Phys(Phys_Flight):
     
     def process_fly(self,ex_i=[]):  #does this interfere with the Flight_Phys init?
         self.open_abf(ex_i)
+        self.clean_lmr_signal()
         self.parse_trial_times()
         self.parse_stim_type()
         
+    def show_nonflight_exclusion(self,title_txt=''):
+        fig = plt.figure(figsize=(17.5,4.5))
+        plt.title(title_txt)
+        
+        plt.plot(self.raw_lmr,color=blue)
+        plt.plot(self.lmr,color=magenta)
+        plt.plot(self.tach*2-75,color=purple)
+        plt.plot(self.ao-100,color=black)
+        plt.plot(self.tr_starts,20*np.ones_like(self.tr_starts),'oc')
+        
+        
+        
+    def clean_lmr_signal(self,title_txt='',if_plot=False):
+        lmr = np.copy(self.lmr)
+        cleaned_lmr = np.copy(lmr) # make a copy here
+        
+        d_lmr = np.diff(lmr)
+        artifacts = np.where(abs(d_lmr) > 35)[0]-1
+    
+        if np.size(artifacts) >= 1:
+            artifact_gap_start_is = np.where(np.diff(artifacts) > .1*10000)[0]+1
+            artifact_gap_start_is = np.hstack((0,artifact_gap_start_is))  # add first start
+    
+            artifact_gap_stop_is = artifact_gap_start_is[1:]-1
+            artifact_gap_stop_is = np.hstack((artifact_gap_stop_is,np.size(artifacts)-1)) # add last
+
+            # now loop though all of these blanked periods, fill with previous/last real value
+            for start_i, stop_i in zip(artifact_gap_start_is,artifact_gap_stop_is):
+                fill_i = artifacts[start_i] - 1
+                if fill_i < 0: 
+                    fill_i = lmr_stop_i[stop_i] + 1
+            
+                lmr_start_i = artifacts[start_i]
+                lmr_stop_i = artifacts[stop_i] + 10
+        
+                cleaned_lmr[lmr_start_i:lmr_stop_i] = cleaned_lmr[fill_i]
+            
+        if if_plot:
+            fig = plt.figure()
+            plt.plot(lmr,color=blue)
+            
+            if artifacts:
+                plt.plot(artifacts,lmr[artifacts],'*c')
+                plt.plot(artifacts[artifact_gap_start_is],np.ones_like(artifact_gap_start_is),'og')
+                plt.plot(artifacts[artifact_gap_stop_is]+10,np.ones_like(artifact_gap_stop_is),'om')
+            plt.plot(cleaned_lmr,color=purple)
+            plt.title(title_txt)
+            
+            # also show nonflight periods here
+
+        self.lmr = cleaned_lmr
+          
     def remove_non_flight_trs(self, iti=750):
         # loop through each trial and determine whether fly was flying continuously
         # if a short nonflight bout (but not during turn window), interpolate
@@ -115,6 +170,7 @@ class Looming_Phys(Phys_Flight):
         print 'nonflight trials : ' + str(np.size(non_flight_trs)) + '/' + str(self.n_trs)
         
         #now remove these
+        self.n_nonflight_trs = np.size(non_flight_trs)
         self.n_trs = self.n_trs - np.size(non_flight_trs)
         self.tr_starts = np.delete(self.tr_starts,non_flight_trs)  #index values of starting and stopping
         self.tr_stops = np.delete(self.tr_stops,non_flight_trs)
@@ -680,6 +736,11 @@ class Looming_Phys(Phys_Flight):
                 else:
                     all_vm_ax[col].set_xlim([0,max_t])
                 
+                
+                all_vm_ax[col].relim()
+                all_vm_ax[col].autoscale_view(True,True,True)
+                    
+                
                 if col == 0: #label yaxes
                 
                     if vm_base_subtract:
@@ -692,7 +753,6 @@ class Looming_Phys(Phys_Flight):
                     
                     all_corr_ax[col].set_ylabel('Corr(Vm, WBA)')
                     
-                    
                     vm_ax_ylim = all_vm_ax[col].get_ylim()
                     all_vm_ax[col].set_yticks([vm_ax_ylim[0],0,vm_ax_ylim[1]])
                     
@@ -701,7 +761,6 @@ class Looming_Phys(Phys_Flight):
                     
                     corr_ax_ylim = all_corr_ax[col].get_ylim()
                     all_corr_ax[col].set_yticks([corr_ax_ylim[0],0,corr_ax_ylim[1]])
-                    
                     
                     # label time x axis for just col 0 ______________________
                     # divide by sampling rate _______________________________
@@ -729,7 +788,13 @@ class Looming_Phys(Phys_Flight):
             fig.text(.775,.905,'Right',fontsize=14)
             
             figure_txt = title_txt + ' '+l_div_v_txt[loom_speed]
-            fig.text(.425,.95,figure_txt,fontsize=18)        
+            fig.text(.425,.95,figure_txt,fontsize=18) 
+            
+            tr_info_str = ' excluded trs: ' + str(self.n_nonflight_trs) + ' / ' + \
+                          str(self.n_nonflight_trs + self.n_trs)
+            
+            fig.text(.05,.95,tr_info_str,fontsize=14) 
+                   
                    
             plt.draw()
             
@@ -742,8 +807,7 @@ class Looming_Phys(Phys_Flight):
                     plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',\
                     bbox_inches='tight',dpi=100) 
                 #plt.close('all')
-                
-                
+             
     def plot_each_tr_saccade(self,l_div_v_list=[0],
         wba_lim=[-45,45]): 
         #for each l/v stim parameter, 
@@ -907,43 +971,6 @@ def process_wings(raw_wings):
     #now multiply to convert volts to degrees
     processed_wings = -45 + shifted_wings*33.75
     return processed_wings
-     
- 
-def clean_lmr_signal(lmr,title_txt='',if_plot=False):
-    cleaned_lmr = np.copy(lmr) # make a copy here
-    
-    d_lmr = np.diff(lmr)
-    artifacts = np.where(abs(d_lmr) > 35)[0]-1
-    
-    if np.size(artifacts) >= 1:
-        artifact_gap_start_is = np.where(np.diff(artifacts) > .2*10000)[0]+1
-        artifact_gap_start_is = np.hstack((0,artifact_gap_start_is))  # add first start
-    
-        artifact_gap_stop_is = artifact_gap_start_is[1:]-1
-        artifact_gap_stop_is = np.hstack((artifact_gap_stop_is,np.size(artifacts)-1)) # add last
-
-        # now loop though all of these blanked periods, fill with previous/last real value
-        for start_i, stop_i in zip(artifact_gap_start_is,artifact_gap_stop_is):
-            fill_i = artifacts[start_i] - 1
-            if fill_i < 0: 
-                fill_i = lmr_stop_i[stop_i] + 1
-            
-            lmr_start_i = artifacts[start_i]
-            lmr_stop_i = artifacts[stop_i] + 10
-        
-            cleaned_lmr[lmr_start_i:lmr_stop_i] = cleaned_lmr[fill_i]
-            
-    if if_plot:
-        fig = plt.figure()
-        plt.plot(lmr,color=blue)
-        if artifacts:
-            plt.plot(artifacts,lmr[artifacts],'*c')
-            plt.plot(artifacts[artifact_gap_start_is],np.ones_like(artifact_gap_start_is),'og')
-            plt.plot(artifacts[artifact_gap_stop_is]+10,np.ones_like(artifact_gap_stop_is),'om')
-            plt.plot(cleaned_lmr,color=purple)
-            plt.title(title_txt)
-
-    return cleaned_lmr
      
 def find_saccades(raw_lmr_trace,test_plot=False):
     #first fill in nans with nearest signal
