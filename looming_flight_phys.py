@@ -444,7 +444,7 @@ class Looming_Phys(Phys_Flight):
                 #plt.close('all')        
         
     def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract=True,l_div_v_list=[0,1,2],
-        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_x_zoom=True,if_summer_exp=True): 
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_x_zoom=True,if_summer_exp=False): 
         
         # for each l/v stim parameter, 
         # make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
@@ -480,7 +480,8 @@ class Looming_Phys(Phys_Flight):
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
             fig = plt.figure(figsize=(16.5, 9))
-            gs = gridspec.GridSpec(4,n_x,height_ratios=[1,1,.2,.5])
+            gs = gridspec.GridSpec(4,n_x,height_ratios=[1,.66,.1,.2])
+            gs.update(wspace=0.025, hspace=0.075) # set the spacing between axes. 
         
             #store all subplots for formatting later           
             all_vm_ax = []
@@ -541,7 +542,6 @@ class Looming_Phys(Phys_Flight):
                     if vm_base_subtract:
                         vm_base = np.nanmean(vm_trace[baseline_win])
                         vm_trace = vm_trace - vm_base
-                    
                     
                     non_nan_i = np.where(~np.isnan(vm_trace))[0]  #I shouldn't need these. remove nans earlier. ****************
                     vm_ax.plot(vm_trace[non_nan_i],color=this_color)
@@ -620,7 +620,7 @@ class Looming_Phys(Phys_Flight):
                 
                 step_size = 1000
                 t_steps = range(0,max_t,step_size)  
-                step_win = 2000
+                step_win = 1000
                 
                 for t_start in t_steps:
                     t_stop = t_start+step_win
@@ -687,8 +687,21 @@ class Looming_Phys(Phys_Flight):
                     else:
                         all_vm_ax[col].set_ylabel('Vm (mV)')
                     all_wba_ax[col].set_ylabel('WBA (V)')
-                    all_stim_ax[col].set_ylabel('Stim (frame)')
+                    #all_stim_ax[col].set_ylabel('Stim (frame)')
+                    all_stim_ax[col].set_yticks([])
+                    
                     all_corr_ax[col].set_ylabel('Corr(Vm, WBA)')
+                    
+                    
+                    vm_ax_ylim = all_vm_ax[col].get_ylim()
+                    all_vm_ax[col].set_yticks([vm_ax_ylim[0],0,vm_ax_ylim[1]])
+                    
+                    wba_ax_ylim = all_wba_ax[col].get_ylim()
+                    all_wba_ax[col].set_yticks([wba_ax_ylim[0],0,wba_ax_ylim[1]])
+                    
+                    corr_ax_ylim = all_corr_ax[col].get_ylim()
+                    all_corr_ax[col].set_yticks([corr_ax_ylim[0],0,corr_ax_ylim[1]])
+                    
                     
                     # label time x axis for just col 0 ______________________
                     # divide by sampling rate _______________________________
@@ -723,9 +736,11 @@ class Looming_Phys(Phys_Flight):
             if if_save:
                 saveas_path = '/Users/jamie/bin/figures/'
                 if if_x_zoom:
-                    plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr_zoomed.png',dpi=100) 
+                    plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr_zoomed.png',\
+                    bbox_inches='tight',dpi=100) 
                 else:
-                    plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',dpi=100) 
+                    plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',\
+                    bbox_inches='tight',dpi=100) 
                 #plt.close('all')
                 
                 
