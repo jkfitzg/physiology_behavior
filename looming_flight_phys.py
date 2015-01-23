@@ -4,6 +4,8 @@ from scipy.io import loadmat
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
+from matplotlib.font_manager import FontProperties
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter 
 from scipy import signal
@@ -63,7 +65,7 @@ class Phys_Flight():
      
         #iterate through the trace in steps of 25 ms (250 with typical 10,000 sampling rate)
         #min flight rate of interest = 100 wing beats/s
-        tach_range_thres = 2
+        tach_range_thres = 1.5 #2
         stroke_range_thres = 1
         step_size = 350 #250
         i_steps = range(start_i,stop_i,step_size)
@@ -101,11 +103,29 @@ class Looming_Phys(Phys_Flight):
         fig = plt.figure(figsize=(17.5,4.5))
         plt.title(title_txt)
         
-        plt.plot(self.raw_lmr,color=blue)
+        #plt.plot(self.tach*2-75,color=purple)
+        plt.plot(self.raw_lmr[::10],color=blue)
         plt.plot(self.lmr,color=magenta)
-        plt.plot(self.tach*2-75,color=purple)
         plt.plot(self.ao-100,color=black)
-        plt.plot(self.tr_starts,20*np.ones_like(self.tr_starts),'oc')
+        plt.plot(self.tr_starts,np.ones_like(self.tr_starts),'oc')
+        plt.ylabel('WBA (Degrees)')
+        plt.xlabel('Samples (at 10,000 hz)')
+        
+        blue_line = mlines.Line2D([], [], color='blue',label='Raw lmr')
+        magenta_line = mlines.Line2D([], [], color='magenta',label='Interpolated lmr')
+        purple_line = mlines.Line2D([], [], color='purple',label='Tachometer')
+        black_line = mlines.Line2D([], [], color='black',label='AO')
+        cyan_pt = mlines.Line2D([],[],marker='o',linewidth=0, color='cyan',label='Tr starts')
+        
+        fontP = FontProperties()
+        fontP.set_size('small')
+        
+        plt.legend(handles=[blue_line,magenta_line,purple_line,black_line,cyan_pt], prop = fontP, \
+                            bbox_to_anchor=(1.025, 1), loc=2, borderaxespad=0.)
+        
+        saveas_path = '/Users/jamie/bin/figures/'
+        plt.savefig(saveas_path + title_txt + '_nonflight exclusion.png',bbox_inches='tight',dpi=100) 
+        
         
         
         
@@ -271,8 +291,9 @@ class Looming_Phys(Phys_Flight):
         
         for tr in range(self.n_trs): 
             tr_ao_code = tr_ao_codes[tr]         
-            stim_types[tr] = int(np.where(unique_tr_ao_codes == tr_ao_code)[0][0])
-            #this crashes when it gets to the crashed area
+            
+            if not np.isnan(tr_ao_code):
+                stim_types[tr] = int(np.where(unique_tr_ao_codes == tr_ao_code)[0])
                 
         
         self.stim_types = stim_types  #change to integer, although nans are also useful
@@ -500,7 +521,7 @@ class Looming_Phys(Phys_Flight):
                 #plt.close('all')        
         
     def plot_vm_wba_stim_corr(self,title_txt='',vm_base_subtract=True,l_div_v_list=[0,1,2],
-        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=False,if_x_zoom=True,if_summer_exp=False): 
+        vm_lim=[-80,-50],wba_lim=[-45,45],if_save=True,if_x_zoom=True,if_summer_exp=False): 
         
         # for each l/v stim parameter, 
         # make figure four rows of signals -- vm, wba, stimulus, vm-wba corr x
@@ -806,7 +827,7 @@ class Looming_Phys(Phys_Flight):
                 else:
                     plt.savefig(saveas_path + figure_txt + '_looming_vm_wings_corr.png',\
                     bbox_inches='tight',dpi=100) 
-                #plt.close('all')
+                plt.close('all')
              
     def plot_each_tr_saccade(self,l_div_v_list=[0],
         wba_lim=[-45,45]): 
