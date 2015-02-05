@@ -542,9 +542,15 @@ class Looming_Phys(Phys_Flight):
                     
         # will these vary for summer cells? ****************************************                
         # define zoomed x axis range relative loom start - s_iti
-        l_div_v_zoom_win = np.array([[s_iti,s_iti+(.9*sampling_rate)],  \
-                                     [s_iti,s_iti+(1.75*sampling_rate)], \
-                                     [s_iti,s_iti+(2.6*sampling_rate)]],dtype=int)
+        
+        if if_summer_exp:
+            l_div_v_zoom_win = np.array([[s_iti,s_iti+(.7*sampling_rate)],  \
+                                         [s_iti,s_iti+(1.4*sampling_rate)], \
+                                         [s_iti,s_iti+(2.3*sampling_rate)]],dtype=int)
+        else:
+            l_div_v_zoom_win = np.array([[s_iti,s_iti+(.9*sampling_rate)],  \
+                                         [s_iti,s_iti+(1.75*sampling_rate)], \
+                                         [s_iti,s_iti+(2.6*sampling_rate)]],dtype=int)
         
         #get all traces and detect saccades ______________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=True)
@@ -556,9 +562,9 @@ class Looming_Phys(Phys_Flight):
            
         #now plot one figure for each looming speed ______________________________________
         for loom_speed in l_div_v_list: 
-            fig = plt.figure(figsize=(16.5, 9))
-            gs = gridspec.GridSpec(4,n_x,height_ratios=[1,.66,.1,.2])
-            gs.update(wspace=0.025, hspace=0.075) # set the spacing between axes. 
+            fig = plt.figure(figsize=(12,8))  
+            gs = gridspec.GridSpec(4,n_x,height_ratios=[1,.75,.1,.25])
+            gs.update(wspace=0.025, hspace=0.05) # set the spacing between axes. 
         
             #store all subplots for formatting later           
             all_vm_ax = []
@@ -697,7 +703,7 @@ class Looming_Phys(Phys_Flight):
                 
                 step_size = 1000
                 t_steps = range(0,max_t,step_size)  
-                step_win = 1000
+                step_win = 2000
                 
                 for t_start in t_steps:
                     t_stop = t_start+step_win
@@ -709,21 +715,23 @@ class Looming_Phys(Phys_Flight):
                     # correlate vm with saccade latencies ________________________________
                     r,p = sp.stats.pearsonr(delta_vm[c_is_nonzero], \
                                             selected_saccade_times[r_is_nonzero,c_is_nonzero][0]-s_iti) #should I subtract?
-                    corr_ax.plot(t_plot,r,'.g')
+                    corr_ax.plot(t_plot,r,'.b',markersize=5)
                     if p < 0.01: #if significant without correcting for many comparisons
-                        corr_ax.plot(t_plot,r,'*g',) 
+                        corr_ax.plot(t_plot,r,'+b',markersize=10,markeredgewidth=1.5) 
                     elif p < 0.05:
-                        corr_ax.plot(t_plot,r,'or',)
+                        corr_ax.plot(t_plot,r,'xb',markersize=10,markeredgewidth=1.5)
+                        corr_ax.plot(t_plot,r,'+b',markersize=10,markeredgewidth=1.5)
                     
                     # correlate vm with saccade magnitude ________________________________
                     # exclude trials with nan. later process wings without nans
                     non_nan = np.where(~np.isnan(lmr_turn_abs_max))[0]  
                     r,p = sp.stats.pearsonr(delta_vm[non_nan],lmr_turn_abs_max[non_nan])
-                    corr_ax.plot(t_plot,r,'.b')
+                    corr_ax.plot(t_plot,r,'.m')
                     if p < 0.01: #if significant without correcting for many comparisons
-                        corr_ax.plot(t_plot,r,'*b',) 
+                        corr_ax.plot(t_plot,r,'+m',markersize=10,markeredgewidth=1.5) 
                     elif p < 0.05: 
-                        corr_ax.plot(t_plot,r,'om')
+                        corr_ax.plot(t_plot,r,'+m',markersize=10,markeredgewidth=1.5)
+                        corr_ax.plot(t_plot,r,'xm',markersize=10,markeredgewidth=1.5)
                                     
             #now format all subplots _____________________________________________________  
            
